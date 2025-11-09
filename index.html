@@ -27,7 +27,6 @@
     width: 100%;
     height: 100%;
     z-index: -10;
-    opacity: 0.4; /* Make it subtle */
     }
     </style>
   </head>
@@ -35,13 +34,13 @@
 
     <!-- Cellular Automata Background Canvas -->
     <canvas id="ca-background"></canvas>
+    <!-- Backdrop for readability over the canvas -->
+    <div class="absolute inset-0 -z-9 bg-gray-950 bg-opacity-90 backdrop-blur-sm" style="margin: 0 auto;"></div>
 
     <!-- Main Content Container -->
     <div class="relative min-h-screen overflow-x-hidden">
       <main class="max-w-4xl mx-auto p-6 sm:p-10 md:p-16">
 
-        <!-- Backdrop for readability over the canvas -->
-        <div class="absolute inset-0 max-w-4xl mx-auto -z-10 bg-gray-950 bg-opacity-80 backdrop-blur-sm" style="margin: 0 auto;"></div>
 
         <!-- Header Section -->
         <header class="mb-12">
@@ -66,148 +65,30 @@
             </a>
             <a href="https://github.com/egmzcrz" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 text-gray-300 hover:text-blue-400 transition-colors duration-200">
               <!-- GitHub Icon -->
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
               GitHub
             </a>
           </div>
+          <br>
+          <p class="text-lg leading-relaxed">
+            I combine a background in Physics and Software Engineering. My professional experience ranges from supervising ticketing technologies for the Mexico City government to building Android applications as a freelance developer. I am an expert in ticketing systems and the Calypso open standard, currently working with the non-for-profit Calypso Networks Association.
+          </p>
         </header>
 
-        <!-- Section: Resumen -->
-        <section class="mb-10">
-          <h2 class="text-2xl font-bold text-white border-b border-blue-500 pb-2 mb-4">
-            Summary
-          </h2>
-          <p class="text-lg leading-relaxed">
-            I combine a background in Physics and Software Engineering. My professional experience ranges from supervising ticketing technologies for the Mexico City government to building Android applications as a freelance developer. I am a recognized expert in ticketing systems and the Calypso open standard, currently working with the non-for-profit Calypso Networks Association.
-          </p>
-        </section>
-
-        <!-- Section: Habilidades -->
-        <section class="mb-10">
-          <h2 class="text-2xl font-bold text-white border-b border-blue-500 pb-2 mb-6">
-            Skills
-          </h2>
-          <div class="mb-4">
-            <h3 class="text-lg font-semibold text-gray-200 mb-3">Languages</h3>
-            <div class="flex flex-wrap gap-2">
-              <span class="bg-gray-800 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">Java</span>
-              <span class="bg-gray-800 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">C++</span>
-              <span class="bg-gray-800 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">SQL</span>
-              <span class="bg-gray-800 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">Python</span>
-              <span class="bg-gray-800 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">Go</span>
-              <span class="bg-gray-800 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">R</span>
-              <span class="bg-gray-800 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">C</span>
-            </div>
-          </div>
-          <div>
-            <h3 class="text-lg font-semibold text-gray-200 mb-3">Tools</h3>
-            <div class="flex flex-wrap gap-2">
-              <span class="bg-gray-800 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">QGIS</span>
-              <span class="bg-gray-800 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">Keyple</span>
-              <span class="bg-gray-800 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">Blender</span>
-              <span class="bg-gray-800 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">Affinity Designer</span>
-              <span class="bg-gray-800 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">Wolfram Mathematica</span>
-              <span class="bg-gray-800 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">OpenTrack</span>
-            </div>
-          </div>
-        </section>
-
-        <!-- Section: Experiencia Laboral -->
-        <section class="mb-10">
-          <h2 class="text-2xl font-bold text-white border-b border-blue-500 pb-2 mb-6">
-            Work Experience
-          </h2>
-          <div class="space-y-6">
-            <!-- Job 1 -->
-            <div class="bg-gray-900 p-4 rounded-lg shadow-lg">
-              <p class="text-sm text-gray-400 mb-1">Nov 2020 - Present</p>
-              <h3 class="text-lg font-semibold text-white">Technical Expert and CNA Coordinator in Mexico</h3>
-              <p class="text-gray-300">Calypso Networks Association</p>
-            </div>
-            <!-- Job 2 -->
-            <div class="bg-gray-900 p-4 rounded-lg shadow-lg">
-              <p class="text-sm text-gray-400 mb-1">Jan 2019 - Jan 2025</p>
-              <h3 class="text-lg font-semibold text-white">Public Transport Technologies Supervisor</h3>
-              <p class="text-gray-300">Secretariat of Mobility of Mexico City (SEMOVI)</p>
-            </div>
-          </div>
-        </section>
-
-        <!-- Section: Formación Académica -->
-        <section class="mb-10">
-          <h2 class="text-2xl font-bold text-white border-b border-blue-500 pb-2 mb-6">
-            Education
-          </h2>
-          <div class="space-y-6">
-            <!-- Education 1 -->
-            <div class="bg-gray-900 p-4 rounded-lg shadow-lg">
-              <p class="text-sm text-gray-400 mb-1">2013 - 2019</p>
-              <h3 class="text-lg font-semibold text-white">Bachelor's Degree in Physics</h3>
-              <p class="text-gray-300">National Autonomous University of Mexico, Faculty of Sciences</p>
-            </div>
-            <!-- Education 2 -->
-            <div class="bg-gray-900 p-4 rounded-lg shadow-lg">
-              <p class="text-sm text-gray-400 mb-1">2015 - 2018</p>
-              <h3 class="text-lg font-semibold text-white">Research Support - Computational Fluid Dynamics</h3>
-              <p class="text-gray-300">National Polytechnic Institute, Aerospace Development Center</p>
-            </div>
-            <!-- Education 3 -->
-            <div class="bg-gray-900 p-4 rounded-lg shadow-lg">
-              <p class="text-sm text-gray-400 mb-1">2010 - 2012</p>
-              <h3 class="text-lg font-semibold text-white">Computer Systems Engineering (Dropout)</h3>
-              <p class="text-gray-300">Ciudad Madero Institute of Technology, Dept. of Systems and Computation</p>
-            </div>
-          </div>
-        </section>
-
-        <!-- Section: Conferencias Impartidas -->
-        <section class="mb-10">
-          <h2 class="text-2xl font-bold text-white border-b border-blue-500 pb-2 mb-6">
-            Conferences & Panels
-          </h2>
-          <ul class="space-y-5 list-none pl-0">
-            <li class="bg-gray-900 p-4 rounded-lg shadow-lg">
-              <p class="text-sm text-gray-400 mb-1">Oct 2025 - Calypso Users Day, Venice</p>
-              <p class="text-gray-200"><span class="font-semibold text-blue-400">Moderator:</span> "ABT - CNA vision and roadmap, Use Case"</p>
-            </li>
-
-            <li class="bg-gray-900 p-4 rounded-lg shadow-lg">
-              <p class="text-sm text-gray-400 mb-1">Oct 2024 - Calypso Users Day, Venice</p>
-              <p class="text-gray-200"><span class="font-semibold text-blue-400">Panel:</span> "Calypso: how a standard can unify mobility."</p>
-              <p class="text-gray-200"><span class="font-semibold text-blue-400">Keynote:</span> "Transforming transportation to address urban inequalities."</p>
-            </li>
-
-            <li class="bg-gray-900 p-4 rounded-lg shadow-lg">
-              <p class="text-sm text-gray-400 mb-1">Oct 2023 - World Passenger Festival, Viena</p>
-              <p class="text-gray-200"><span class="font-semibold text-blue-400">Panel:</span> "How cities are designing the urban centres of the future."</p>
-              <p class="text-gray-200"><span class="font-semibold text-blue-400">Guest:</span> "Transforming transportation to address urban inequalities."</p>
-            </li>
-
-            <li class="bg-gray-900 p-4 rounded-lg shadow-lg">
-              <p class="text-sm text-gray-400 mb-1">Sep 2023 - Calypso User Days, Paris</p>
-              <p class="text-gray-200"><span class="font-semibold text-blue-400">Panel:</span> "Certification: an additional complexity or a necessity for the smooth operation of your ticketing system?"</p>
-            </li>
-          </ul>
-        </section>
-
-        <!-- Section: Idiomas -->
-        <section class="mb-10">
-          <h2 class="text-2xl font-bold text-white border-b border-blue-500 pb-2 mb-6">
-            Languages
-          </h2>
-          <ul class="space-y-2 list-none pl-0">
-            <li><strong class="font-semibold text-gray-200">Spanish:</strong> Native</li>
-            <li><strong class="font-semibold text-gray-200">English:</strong> Fluent (spoken, read, and written)</li>
-          </ul>
-        </section>
-
         <!-- Footer -->
-        <!--
-<footer class="text-center mt-16 py-6 border-t border-gray-800">
-<p class="text-gray-500">
-</p>
-</footer>
--->
+        <footer class="text-center mt-16 py-6 border-t border-gray-800">
+          <p class="text-xs leading-relaxed">
+            Nixuun is born from two Mayan words: <b>Nik</b> (zero) and <b>Jun</b> (one).
+          </p>
+          <br>
+          <p class="text-xs leading-relaxed">
+            <b>Nik</b> is the moment before the Big Bang. It is the unopened flower holding the promise of fruit. It is the fertile ground from which all things grow. It is the quiet stillness of pure potential, containing every possible future within it. While the modern zero is absence, Nik is the presence of everything, waiting to be expressed.
+          </p>
+          <br>
+          <p class="text-xs leading-relaxed">
+            <b>Jun</b> is the number one. It is the spark. It is the first sprout that breaks through the soil. It is the singular, focused action that turns boundless potential into a tangible reality. Jun is the beginning of the count, the start of the story, the first step on a new path. It is the courage to choose one direction out of infinite possibilities.
+          </p>
+        </footer>
 
       </main>
     </div>
