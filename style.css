@@ -1,0 +1,127 @@
+:root {
+  --bg-dark: #0f1115;
+  --text-primary: #e5e7eb;
+  --text-secondary: #6b7280;
+  --accent-hover: #e5e7eb;
+  --border-subtle: #1f2937;
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.container {
+  max-width: 720px;
+  width: 100%;
+  padding: 4rem 2rem;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 2rem;
+  margin-bottom: 4rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.name {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin: 0;
+  letter-spacing: 0.5px;
+}
+
+.social-icons {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.social-icons a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.3s ease;
+  display: flex;
+  align-items: center;
+}
+
+.social-icons a:hover {
+  color: var(--text-primary);
+}
+
+.social-icons svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3.5rem;
+}
+
+.project-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.project-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.project-title {
+  font-size: 1.15rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-decoration: none;
+  position: relative;
+  transition: color 0.2s ease;
+}
+
+/* Underline hover effect */
+.project-title::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  transform: scaleX(0);
+  height: 1px;
+  bottom: 0;
+  left: 0;
+  background-color: var(--text-primary);
+  transform-origin: bottom right;
+  transition: transform 0.25s ease-out;
+}
+
+.project-title:hover::after {
+  transform: scaleX(1);
+  transform-origin: bottom left;
+}
+
+.project-icons {
+  display: flex;
+  gap: 0.75rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.project-description {
+  color: var(--text-secondary);
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 300;
+  max-width: 600px;
+}
