@@ -254,7 +254,7 @@ function renderPlots(dist, vel, time, energy, path) {
       text: `${name} (${distKm})`, 
       textangle: -90, 
       showarrow: false,
-      font: {size: 10, color: 'darkblue'}, 
+      font: {size: 9, color: 'darkblue'}, 
       xanchor: 'right'
     };
   });
@@ -270,6 +270,7 @@ function renderPlots(dist, vel, time, energy, path) {
 
   const layout = {
     grid: { rows: 5, columns: 1, pattern: 'coupled' },
+    font: { size: 9, },
     margin: { t: 10, b: 60, l: 60, r: 10 },
     showlegend: false,
     shapes: shapes,
