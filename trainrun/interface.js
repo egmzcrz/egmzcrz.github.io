@@ -16,7 +16,7 @@ function exportToCsv() {
   const { dist, vel, time, energy, vlim, slope, curve } = latestSimulationData;
 
   // Build the CSV header
-  let csvContent = "Distance [km],Speed [km/h],Speed Limit [km/h],Time [min],Energy [MJ],Slope [per mille],Curve [1/m]\n";
+  let csvContent = "Distance [km],Speed [km/h],Speed Limit [km/h],Time [min],Energy [MJ],Slope [per mille],Curve [m]\n";
 
   // Append each row
   for (let i = 0; i < dist.length; i++) {
