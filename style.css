@@ -125,3 +125,15 @@ header {
   font-weight: 300;
   max-width: 600px;
 }
+
+.repo-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.3s ease;
+  display: flex;
+  align-items: center;
+}
+
+.repo-link:hover {
+  color: var(--text-primary);
+}
