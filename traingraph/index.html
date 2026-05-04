@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marey Chart Generator</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+    :root {
+    --bg-color: #f8f9fa;
+    --bar-bg: #212529;
+    --text-color: #f8f9fa;
+    --font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    }
+    body {
+    font-family: var(--font-family);
+    margin: 0;
+    padding: 0;
+    background-color: var(--bg-color);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    }
+    .top-bar {
+    background-color: var(--bar-bg);
+    color: var(--text-color);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    z-index: 10;
+    }
+    .top-bar h1 {
+    font-size: 1.2rem;
+    margin: 0 20px 0 0;
+    font-weight: normal;
+    }
+    .file-input-wrapper {
+    position: relative;
+    overflow: hidden;
+    display: inline-block;
+    }
+    .file-input-wrapper input[type="file"] {
+    font-size: 14px;
+    cursor: pointer;
+    }
+    #chart {
+    flex-grow: 1;
+    width: 100%;
+    }
+    .status {
+    margin-left: 20px;
+    font-size: 0.9rem;
+    color: #adb5bd;
+    }
+    </style>
+  </head>
+  <body>
+
+    <div class="top-bar">
+      <h1>Marey Chart Plotter</h1>
+      <div class="file-input-wrapper">
+        <input type="file" id="fileInput" accept=".xlsx, .xls" />
+      </div>
+      <span class="status" id="statusText">Waiting for file upload...</span>
+    </div>
+
+    <div id="chart"></div>
+
+    <script>
+    document.getElementById('fileInput').addEventListener('change', handleFile, false);
+
+    function setStatus(text, isError = false) {
+      const statusEl = document.getElementById('statusText');
+      statusEl.textContent = text;
+      statusEl.style.color = isError ? '#ff6b6b' : '#adb5bd';
+    }
+
+    function handleFile(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      setStatus('Parsing Excel file...');
+      const reader = new FileReader();
+
+      reader.onload = function(evt) {
+        try {
+          const data = new Uint8Array(evt.target.result);
+          const workbook = XLSX.read(data, { type: 'array', raw: true });
+          processWorkbook(workbook);
+        } catch (error) {
+          console.error(error);
+          setStatus('Error reading file. Ensure it is a valid Excel file.', true);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function processWorkbook(workbook) {
+      let distanceSheetName = null;
+      let timetableSheetNames = [];
+
+      // 1. Identify Sheets
+      workbook.SheetNames.forEach(name => {
+        const sheet = workbook.Sheets[name];
+        const json = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+
+        // Determine max non-empty columns in the first few rows
+        let maxCols = 0;
+        for (let i = 0; i < Math.min(json.length, 10); i++) {
+          if (!json[i]) continue;
+          let cols = json[i].filter(c => c !== null && c !== '').length;
+          if (cols > maxCols) maxCols = cols;
+        }
+
+        if (maxCols > 0 && maxCols <= 2) {
+          distanceSheetName = name;
+        } else if (maxCols > 2) {
+          timetableSheetNames.push(name);
+        }
+      });
+
+      if (!distanceSheetName) {
+        setStatus('Error: Could not automatically detect the 2-column distance sheet.', true);
+        return;
+      }
+
+      if (timetableSheetNames.length === 0) {
+        setStatus('Error: Could not detect timetable sheets.', true);
+        return;
+      }
+
+      // 2. Parse Distances
+      let stationMap = {};
+      const distData = XLSX.utils.sheet_to_json(workbook.Sheets[distanceSheetName], { header: 1 });
+      distData.forEach(row => {
+        if (row.length >= 2 && row[0] && row[1] != null) {
+          let stationName = String(row[0]).trim().toUpperCase();
+          let distance = parseFloat(row[1]);
+          if (!isNaN(distance)) {
+            stationMap[stationName] = distance;
+          }
+        }
+      });
+
+      // 3. Parse Timetables
+      let plotData = [];
+      timetableSheetNames.forEach(name => {
+        const sheet = workbook.Sheets[name];
+        const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        if (json.length < 2) return;
+
+        let row0 = json[0] || [];
+        let row1 = json[1] || [];
+        let headers = [];
+        let lastStation = null;
+
+        let maxLen = Math.max(row0.length, row1.length);
+
+        // Reconstruct Double Headers
+        for (let i = 0; i < maxLen; i++) {
+          let topH = row0[i];
+          if (topH && String(topH).trim() !== '' && !String(topH).includes('Unnamed')) {
+            lastStation = String(topH).trim().toUpperCase();
+          }
+          let subH = row1[i] ? String(row1[i]).trim().toUpperCase() : '';
+          headers.push({ station: lastStation, type: subH });
+        }
+
+        // Locate the Train ID Column (SERV, TREN, N° SERV)
+        let idColIdx = headers.findIndex(h => h.type.includes('SERV') || h.type.includes('SERVICIO') || h.type.includes('TREN'));
+        if (idColIdx === -1) idColIdx = 0; // Fallback to first column
+
+        // Extract Row Data
+        for (let r = 2; r < json.length; r++) {
+          let row = json[r];
+          if (!row) continue;
+          let trainId = row[idColIdx];
+          if (trainId === null || trainId === undefined || String(trainId).trim() === '') continue;
+
+          for (let c = 0; c < row.length; c++) {
+            let cell = row[c];
+            if (cell === null || cell === undefined) continue;
+
+            let h = headers[c];
+            if (!h || !h.station) continue;
+
+            if (h.type === 'LLEGADA' || h.type === 'SALIDA') {
+              let y_pos = stationMap[h.station];
+              if (y_pos === undefined) continue; // Station not in distance map
+
+              let timeObj = parseExcelTime(cell);
+              if (timeObj) {
+                plotData.push({
+                  train: String(trainId).trim(),
+                  station: h.station,
+                  type: h.type,
+                  time: timeObj,
+                  y: y_pos
+                });
+              }
+            }
+          }
+        }
+      });
+
+      if (plotData.length === 0) {
+        setStatus('No valid timetable data found.', true);
+        return;
+      }
+
+      drawPlot(plotData, stationMap);
+      setStatus(`Successfully loaded ${timetableSheetNames.length} timetable sheet(s).`);
+    }
+
+    // Helper: Convert Excel time numbers or strings to JS Dates
+    function parseExcelTime(val) {
+      let hours = 0, minutes = 0, seconds = 0;
+
+      if (typeof val === 'number') {
+        // Handle Excel fractional day time (e.g., 0.5 = 12:00:00)
+        let totalSeconds = Math.round(val * 24 * 3600);
+        hours = Math.floor(totalSeconds / 3600) % 24;
+        minutes = Math.floor((totalSeconds % 3600) / 60);
+        seconds = totalSeconds % 60;
+      } else if (typeof val === 'string') {
+        // Handle string time formats
+        let match = val.match(/(\d+):(\d+)(?::(\d+))?\s*(AM|PM)?/i);
+        if (!match) return null;
+
+        hours = parseInt(match[1]);
+        minutes = parseInt(match[2]);
+        seconds = match[3] ? parseInt(match[3]) : 0;
+        let ampm = match[4] ? match[4].toUpperCase() : null;
+
+        if (ampm === 'PM' && hours < 12) hours += 12;
+        if (ampm === 'AM' && hours === 12) hours = 0;
+      } else {
+        return null;
+      }
+
+      // Arbitrary base date. Shift day +1 if before 3 AM (Overnight handling)
+      let date = new Date(1970, 0, 1, hours, minutes, seconds);
+      if (hours < 3) {
+        date.setDate(2);
+      }
+      return date;
+    }
+
+    // Plotly Rendering
+    function drawPlot(plotData, stationMap) {
+      let trains = {};
+      // Group by Train ID
+      plotData.forEach(d => {
+        if (!trains[d.train]) trains[d.train] = [];
+        trains[d.train].push(d);
+      });
+
+      let traces = [];
+
+      for (let trainId in trains) {
+        let data = trains[trainId];
+        // Sort chronologically
+        data.sort((a, b) => a.time - b.time);
+
+        // Group times by station to show both Arrival and Departure on hover
+        let stationTimes = {};
+        data.forEach(d => {
+          if (!stationTimes[d.station]) stationTimes[d.station] = {};
+          stationTimes[d.station][d.type] = d.time;
+        });
+
+        let xVals = [];
+        let yVals = [];
+        let hoverTexts = [];
+
+        data.forEach(d => {
+          xVals.push(d.time);
+          yVals.push(d.y);
+
+          let arr = stationTimes[d.station]['LLEGADA'];
+          let dep = stationTimes[d.station]['SALIDA'];
+
+          // Fallback to "N/A" for edge cases like starting/ending terminals
+          let arrStr = arr ? arr.toTimeString().slice(0,8) : 'N/A';
+          let depStr = dep ? dep.toTimeString().slice(0,8) : 'N/A';
+
+          hoverTexts.push(
+            `<b>Estación:</b> ${d.station}<br>` +
+              `<b>Servicio:</b> ${trainId}<br>` +
+              `<b>Llegada:</b> ${arrStr}<br>` +
+              `<b>Salida:</b> ${depStr}`
+          );
+        });
+
+        // Alternating colors based on parity
+        let isEven = !isNaN(parseInt(trainId)) && parseInt(trainId) % 2 === 0;
+
+        traces.push({
+          x: xVals,
+          y: yVals,
+          text: hoverTexts,
+          mode: 'lines+markers', // Removed '+text' so annotations don't show on the plot
+          name: `Tren ${trainId}`,
+          line: { width: 1.5, color: isEven ? 'blue' : 'black' },
+          marker: { size: 4 },
+          opacity: 0.5,
+          hovertemplate: '%{text}<extra></extra>' // <extra></extra> hides the default secondary trace box
+        });
+      }
+
+      // Prepare Custom Y-Axis Labels based on Distance mapping
+      let tickvals = [];
+      let ticktext = [];
+      let sortedStations = Object.keys(stationMap).sort((a, b) => stationMap[a] - stationMap[b]);
+
+      sortedStations.forEach(st => {
+        ticktext.push(st);
+        tickvals.push(stationMap[st]);
+      });
+
+      let layout = {
+        font: { family: 'Consolas, monospace', size: 11 },
+        plot_bgcolor: 'white',
+        paper_bgcolor: 'white',
+        hovermode: 'closest',
+        showlegend: false,
+        margin: { l: 120, r: 40, t: 30, b: 60 },
+        xaxis: {
+          type: 'date',
+          tickformat: '%H:%M',
+          dtick: 10 * 60 * 1000, // 10 minutes
+          gridcolor: '#e9ecef',
+          zeroline: false,
+          tickangle: -45,
+          side: 'bottom',
+          mirror: 'ticks',
+          showline: true,
+          linecolor: '#dee2e6'
+        },
+        yaxis: {
+          tickmode: 'array',
+          tickvals: tickvals,
+          ticktext: ticktext,
+          autorange: 'reversed', // Keep starting terminal at the top
+          gridcolor: '#e9ecef',
+          zeroline: false,
+          showline: true,
+          linecolor: '#dee2e6'
+        }
+      };
+
+      let config = { responsive: true, displayModeBar: true };
+
+      Plotly.newPlot('chart', traces, layout, config);
+    }
+    </script>
+  </body>
+</html>
