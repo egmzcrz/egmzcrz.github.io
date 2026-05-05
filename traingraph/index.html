@@ -3,18 +3,21 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marey Chart Generator</title>
+    <title>Train Timetable Visualizer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
     :root {
     --bg-color: #f8f9fa;
-    --bar-bg: #212529;
-    --text-color: #f8f9fa;
-    --font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    --bar-bg: #ffffff;
+    --text-color: #2b2d42;
+    --accent-color: #4361ee;
+    --accent-hover: #3a56d4;
+    --ui-font: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     body {
-    font-family: var(--font-family);
+    font-family: var(--ui-font);
     margin: 0;
     padding: 0;
     background-color: var(--bg-color);
@@ -25,45 +28,84 @@
     .top-bar {
     background-color: var(--bar-bg);
     color: var(--text-color);
-    padding: 12px 20px;
+    padding: 16px 24px;
     display: flex;
     align-items: center;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    justify-content: space-between;
+    border-bottom: 1px solid #e5e7eb;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
     z-index: 10;
     }
-    .top-bar h1 {
+    .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    }
+    .logo i {
+    color: var(--accent-color);
     font-size: 1.2rem;
-    margin: 0 20px 0 0;
-    font-weight: normal;
     }
-    .file-input-wrapper {
-    position: relative;
-    overflow: hidden;
-    display: inline-block;
+    .logo h1 {
+    font-size: 1.1rem;
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: -0.3px;
     }
-    .file-input-wrapper input[type="file"] {
-    font-size: 14px;
+    .controls {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    }
+    input[type="file"] {
+    display: none; /* Hide default ugly input */
+    }
+    .custom-file-upload {
+    background-color: var(--accent-color);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 6px;
     cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    }
+    .custom-file-upload:hover {
+    background-color: var(--accent-hover);
+    box-shadow: 0 2px 6px rgba(67, 97, 238, 0.25);
+    }
+    .status {
+    font-size: 0.85rem;
+    color: #6b7280;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     }
     #chart {
     flex-grow: 1;
     width: 100%;
-    }
-    .status {
-    margin-left: 20px;
-    font-size: 0.9rem;
-    color: #adb5bd;
     }
     </style>
   </head>
   <body>
 
     <div class="top-bar">
-      <h1>Marey Chart Plotter</h1>
-      <div class="file-input-wrapper">
-        <input type="file" id="fileInput" accept=".xlsx, .xls" />
+      <div class="logo">
+        <i class="fa-solid fa-chart-line"></i>
+        <h1>Train Timetable Visualizer</h1>
       </div>
-      <span class="status" id="statusText">Waiting for file upload...</span>
+
+      <div class="controls">
+        <span class="status" id="statusText">
+          <i class="fa-solid fa-circle-info"></i> Waiting for file upload...
+        </span>
+        <label class="custom-file-upload">
+          <input type="file" id="fileInput" accept=".xlsx, .xls, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" />
+          <i class="fa-solid fa-file-arrow-up"></i> Load Data
+        </label>
+      </div>
     </div>
 
     <div id="chart"></div>
@@ -73,8 +115,13 @@
 
     function setStatus(text, isError = false) {
       const statusEl = document.getElementById('statusText');
-      statusEl.textContent = text;
-      statusEl.style.color = isError ? '#ff6b6b' : '#adb5bd';
+      // Change icon based on whether it's an error or not
+      const icon = isError 
+        ? '<i class="fa-solid fa-circle-exclamation"></i>' 
+        : '<i class="fa-solid fa-circle-info"></i>';
+
+      statusEl.innerHTML = `${icon} ${text}`;
+      statusEl.style.color = isError ? '#ef4444' : '#6b7280';
     }
 
     function handleFile(e) {
