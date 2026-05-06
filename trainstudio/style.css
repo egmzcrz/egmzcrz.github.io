@@ -1,0 +1,189 @@
+:root {
+  /* Minimalist Modern Palette */
+  --bg-sidebar: #fcfcfc;
+  --bg-main: #ffffff;
+  --border-color: #eaeaea;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --accent: #0f172a; /* Sleek dark accent instead of bright blue */
+  --input-border: #d1d5db;
+  --input-focus: #9ca3af;
+  --radius: 6px;
+}
+
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: row; /* Horizontal layout */
+  height: 100vh;
+  overflow: hidden; /* Prevent full-page scrolling */
+  box-sizing: border-box;
+}
+
+/* --- Sidebar Styling --- */
+#sidebar {
+  width: 360px;
+  min-width: 360px;
+  background-color: var(--bg-sidebar);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.header {
+  margin-bottom: 32px;
+}
+
+.header h2 {
+  margin: 0 0 8px 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.header p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.controls-container {
+  display: flex; /* Hidden by default via JS until file loaded */
+  flex-direction: column;
+  gap: 24px;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.divider {
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 8px 0;
+}
+
+/* --- Input Styling --- */
+label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.sub-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+select, input[type="number"] {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  background-color: #fff;
+  outline: none;
+  transition: border-color 0.2s ease;
+  box-sizing: border-box;
+}
+
+select:focus, input[type="number"]:focus {
+  border-color: var(--input-focus);
+}
+
+input[type="file"] {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+input[type="file"]::file-selector-button {
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--input-border);
+  background-color: #fff;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin-right: 12px;
+  transition: background-color 0.2s ease;
+}
+
+input[type="file"]::file-selector-button:hover {
+  background-color: #f3f4f6;
+}
+
+/* Slider Styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--input-border);
+  border-radius: 2px;
+  outline: none;
+  margin: 12px 0;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+/* Intervals Grid */
+#intervals-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.interval-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.interval-box label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.interval-box input {
+  text-align: center;
+  padding: 6px;
+}
+
+/* --- Main Chart Area --- */
+#main-content {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  background-color: var(--bg-main);
+  overflow: hidden; /* Let Plotly handle internal rendering */
+}
+
+#chart-container {
+  flex-grow: 1;
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: #fff;
+}

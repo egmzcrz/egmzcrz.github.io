@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Train Timetable Planner</title>
+    <link rel="stylesheet" href="style.css">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+
+  </head>
+  <body>
+
+    <div id="sidebar">
+      <div class="header">
+        <h2>Service Planner</h2>
+      </div>
+
+      <div class="control-group" style="margin-bottom: 16px;">
+        <input type="file" id="file-upload" accept=".xlsx, .xls">
+      </div>
+
+      <div class="controls-container" id="editor-controls" style="display: none;">
+
+        <div class="divider"></div>
+
+        <div class="control-group">
+          <label>Corridor View</label>
+          <span class="sub-label">Select main corridor to visualize</span>
+          <select id="corridor-select"></select>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="control-group">
+          <label>Service Editor</label>
+          <span class="sub-label">Select line to configure</span>
+          <select id="line-select"></select>
+        </div>
+
+        <div class="control-group">
+          <label>Start Time Offset (Mins)</label>
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <input type="range" id="start-offset-slider" min="300" max="1440" step="1" value="300" style="flex-grow: 1; margin: 0;">
+            <input type="number" id="start-offset-number" min="300" max="1440" step="1" value="300" style="width: 80px;">
+          </div>
+          <span class="sub-label" id="offset-display">05:00</span>
+        </div>
+
+        <div class="control-group">
+          <label>Hourly Headway (Mins)</label>
+          <span class="sub-label">Set to 0 for no service</span>
+          <div id="intervals-grid">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="main-content">
+      <div id="chart-container"></div>
+    </div>
+
+    <script src="planner.js"></script>
+  </body>
+</html>
