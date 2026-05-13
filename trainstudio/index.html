@@ -1466,8 +1466,10 @@ function updateChart() {
 
   if (allVisibleServices.length === 0) {
     updateYAxis(corridorNodes, corridorPositions, yScale, yAxisG, yGridG, innerW);
-    xAxisG.call(d3.axisBottom(xScale).tickFormat(''));
-    xGridG.call(d3.axisBottom(xScale).tickSize(-innerH).tickSizeOuter(0).tickFormat(''));
+    const zt0 = d3.zoomTransform(chartState.svg.node());
+    const rx0 = zt0.rescaleX(xScale);
+    xAxisG.call(d3.axisBottom(rx0).tickFormat(''));
+    xGridG.call(d3.axisBottom(rx0).tickSize(-innerH).tickSizeOuter(0).tickFormat(''));
     xGridG.select('.domain').remove();
     updateLegend();
     return;
@@ -1568,20 +1570,23 @@ function updateChart() {
     }
   }
 
-  // X Axis (already positioned at bottom in initChart)
+  // X Axis — use rescaleX to stay in sync with the current zoom transform
+  const zt = d3.zoomTransform(chartState.svg.node());
+  const rx = zt.rescaleX(xScale);
+  const tickCount = Math.max(2, Math.floor(innerW / (80 * zt.k)));
   xAxisG.call(
-    d3.axisBottom(xScale)
+    d3.axisBottom(rx)
       .tickFormat(d => formatTimeHHMM(d))
-      .ticks(Math.max(2, Math.floor(innerW / 80)))
+      .ticks(tickCount)
   );
 
   // X Grid
   xGridG.call(
-    d3.axisBottom(xScale)
+    d3.axisBottom(rx)
       .tickSize(-innerH)
       .tickSizeOuter(0)
       .tickFormat('')
-      .ticks(Math.max(2, Math.floor(innerW / 80)))
+      .ticks(tickCount)
   );
   xGridG.select('.domain').remove();
 
