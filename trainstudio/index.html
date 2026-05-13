@@ -3,64 +3,2007 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Train Timetable Planner</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Marey Chart Service Planner</title>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <!-- Font Awesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
+    <!-- D3.js v7 -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+
+    <!-- SheetJS for Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+
+    <style>
+    /* ============================================================
+    CSS Custom Properties
+    ============================================================ */
+    :root {
+    --bg:            #f8fafc;
+    --surface:       #ffffff;
+    --border:        #e2e8f0;
+    --text:          #1e293b;
+    --text-secondary:#64748b;
+    --text-muted:    #94a3b8;
+    --accent:        #3b82f6;
+    --accent-hover:  #2563eb;
+    --accent-light:  #eff6ff;
+    --danger:        #ef4444;
+    --danger-hover:  #dc2626;
+    --success:       #22c55e;
+    --warning:       #f59e0b;
+    --radius:        10px;
+    --radius-sm:     6px;
+    --shadow:        0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+    --shadow-lg:     0 4px 16px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04);
+    --font:          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono:     "SF Mono", "Fira Code", "Fira Mono", monospace;
+    --topbar-h:      52px;
+    --panel-w:       340px;
+    --transition:    150ms ease;
+    }
+
+    /* ============================================================
+    Reset & Base
+    ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+    height: 100%; width: 100%;
+    font-family: var(--font);
+    font-size: 14px;
+    color: var(--text);
+    background: var(--bg);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    }
+
+    button {
+    font-family: var(--font);
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-size: inherit;
+    }
+
+    input, select {
+    font-family: var(--font);
+    font-size: 13px;
+    }
+
+    /* ============================================================
+    App Layout (CSS Grid)
+    ============================================================ */
+    #app {
+    display: grid;
+    grid-template-rows: var(--topbar-h) 1fr;
+    grid-template-columns: 1fr;
+    height: 100vh;
+    width: 100vw;
+    }
+
+    /* ---- Top Bar ---- */
+    #topbar {
+    grid-row: 1;
+    grid-column: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    z-index: 10;
+    }
+
+    #topbar .logo {
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: -.01em;
+    margin-right: 8px;
+    white-space: nowrap;
+    }
+
+    #topbar .spacer { flex: 1; }
+
+    /* ---- Main Area ---- */
+    #main {
+    grid-row: 2;
+    grid-column: 1;
+    display: grid;
+    grid-template-columns: 1fr var(--panel-w);
+    overflow: hidden;
+    }
+
+    /* ---- Chart Panel ---- */
+    #chart-panel {
+    position: relative;
+    overflow: hidden;
+    background: #fff;
+    cursor: grab;
+    }
+
+    #chart-panel:active { cursor: grabbing; }
+
+    #chart-panel svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    }
+
+    /* ---- Detail Panel (right) ---- */
+    #detail-panel {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    }
+
+    #detail-panel .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--text-muted);
+    padding: 24px;
+    text-align: center;
+    }
+
+    #detail-panel .empty-state i { font-size: 36px; opacity: .5; }
+
+    /* ============================================================
+    Buttons
+    ============================================================ */
+    .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+    transition: all var(--transition);
+    white-space: nowrap;
+    border: 1px solid transparent;
+    }
+
+    .btn i { font-size: 12px; }
+
+    .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+
+    .btn-outline {
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--border);
+    }
+    .btn-outline:hover {
+    background: var(--bg);
+    border-color: #cbd5e1;
+    }
+
+    .btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    }
+    .btn-ghost:hover {
+    background: var(--bg);
+    color: var(--text);
+    }
+
+    .btn-danger-text {
+    background: transparent;
+    color: var(--danger);
+    padding: 4px 8px;
+    font-size: 12px;
+    }
+    .btn-danger-text:hover {
+    background: #fef2f2;
+    color: var(--danger-hover);
+    }
+
+    .btn-icon {
+    width: 32px; height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    }
+    .btn-icon:hover { background: var(--bg); color: var(--text); }
+
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn-xs { padding: 2px 7px;  font-size: 11px; }
+
+    /* ============================================================
+    Form Elements
+    ============================================================ */
+    .form-select, .form-input {
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+    transition: border-color var(--transition);
+    }
+    .form-select:focus, .form-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(59,130,246,.12);
+    }
+
+    .form-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2364748b' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+    }
+
+    .form-input { width: 100%; }
+
+    .form-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    }
+
+    .form-group { margin-bottom: 12px; }
+
+    .form-row {
+    display: flex;
+    gap: 8px;
+    }
+    .form-row > * { flex: 1; }
+
+    .color-swatch {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    cursor: pointer;
+    transition: transform var(--transition);
+    }
+    .color-swatch:hover { transform: scale(1.15); }
+    .color-swatch.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-light);
+    }
+
+    .color-palette {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    }
+
+    /* ============================================================
+    Modal / Overlay
+    ============================================================ */
+    .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15,23,42,.35);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    animation: fadeIn 120ms ease;
+    }
+
+    @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+    }
+
+    .modal {
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    width: 440px;
+    max-width: 94vw;
+    max-height: 85vh;
+    overflow-y: auto;
+    animation: slideUp 180ms ease;
+    }
+
+    @keyframes slideUp {
+    from { transform: translateY(12px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+    }
+
+    .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    }
+
+    .modal-header h2 {
+    font-size: 16px;
+    font-weight: 600;
+    }
+
+    .modal-body { padding: 20px; }
+
+    .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    }
+
+    /* ============================================================
+    Detail Panel Content
+    ============================================================ */
+    .detail-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    }
+
+    .detail-header .service-info h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 2px;
+    }
+
+    .detail-header .service-info .meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+    }
+
+    .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    }
+    .badge-north { background: #dbeafe; color: #1d4ed8; }
+    .badge-south { background: #fce7f3; color: #be185d; }
+
+    .detail-table-wrap {
+    padding: 8px 16px 16px;
+    flex: 1;
+    overflow-y: auto;
+    }
+
+    .detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    }
+
+    .detail-table th {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    text-align: left;
+    padding: 6px 4px;
+    border-bottom: 2px solid var(--border);
+    }
+
+    .detail-table td {
+    padding: 4px;
+    border-bottom: 1px solid #f1f5f9;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    }
+
+    .detail-table .station-name {
+    font-weight: 500;
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    }
+
+    .detail-table input.time-input {
+    width: 60px;
+    height: 28px;
+    padding: 0 6px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text);
+    text-align: center;
+    transition: all var(--transition);
+    }
+    .detail-table input.time-input:hover {
+    border-color: var(--border);
+    }
+    .detail-table input.time-input:focus {
+    border-color: var(--accent);
+    background: var(--accent-light);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(59,130,246,.1);
+    }
+
+    /* ============================================================
+    Plans List in Edit Modal
+    ============================================================ */
+    .plan-list-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    margin-bottom: 8px;
+    transition: all var(--transition);
+    }
+    .plan-list-item:hover { border-color: #cbd5e1; }
+    .plan-list-item.hidden { opacity: .45; }
+
+    .plan-list-item .plan-color {
+    width: 12px; height: 12px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    }
+
+    .plan-list-item .plan-name {
+    flex: 1;
+    font-weight: 500;
+    font-size: 13px;
+    }
+
+    /* ============================================================
+    Chart Legend
+    ============================================================ */
+    #chart-legend {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(255,255,255,.92);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    font-size: 11px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    pointer-events: none;
+    box-shadow: var(--shadow);
+    max-width: 300px;
+    }
+
+    #chart-legend .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    }
+
+    #chart-legend .legend-swatch {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    }
+
+    /* ============================================================
+    Tooltip
+    ============================================================ */
+    #chart-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(15,23,42,.88);
+    color: #fff;
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    opacity: 0;
+    transition: opacity 100ms;
+    z-index: 20;
+    white-space: nowrap;
+    }
+
+    /* ============================================================
+    Upload Zone
+    ============================================================ */
+    #upload-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(248,250,252,.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    }
+
+    .upload-card {
+    background: var(--surface);
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 48px 64px;
+    text-align: center;
+    cursor: pointer;
+    transition: all var(--transition);
+    box-shadow: var(--shadow);
+    }
+
+    .upload-card:hover {
+    border-color: var(--accent);
+    background: var(--accent-light);
+    }
+
+    .upload-card i {
+    font-size: 48px;
+    color: var(--accent);
+    margin-bottom: 16px;
+    }
+
+    .upload-card h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    }
+
+    .upload-card p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    }
+
+    /* ============================================================
+    Toast
+    ============================================================ */
+    #toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--text);
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 200ms ease;
+    z-index: 300;
+    pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.error { background: var(--danger); }
+
+    /* ============================================================
+    Misc
+    ============================================================ */
+    .drag-cursor { cursor: ew-resize !important; }
+
+    .axis text {
+    font-size: 10px;
+    fill: var(--text-muted);
+    font-family: var(--font);
+    }
+
+    .axis line, .axis .domain {
+    stroke: var(--border);
+    }
+
+    .grid line {
+    stroke: #f1f5f9;
+    stroke-dasharray: 2 4;
+    }
+
+    .grid .domain { display: none; }
+
+    .service-path {
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    }
+    .service-path:hover { stroke-width: 3 !important; }
+    .service-path.selected { stroke-width: 3.2; }
+
+    .service-hitarea {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 14;
+    cursor: pointer;
+    }
+
+    .node-dot {
+    cursor: ew-resize;
+    }
+    .node-dot:hover { r: 6 !important; }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
   </head>
   <body>
 
-    <div id="sidebar">
-      <div class="header">
-        <h2>Service Planner</h2>
+    <!-- ============================================================
+App Shell
+============================================================ -->
+    <div id="app">
+
+      <!-- Top Bar -->
+      <div id="topbar">
+        <span class="logo"><i class="fa-solid fa-train-subway"></i> Marey Planner</span>
+
+        <select id="corridor-select" class="form-select" disabled>
+          <option value="">Load data first...</option>
+        </select>
+
+        <button id="btn-add-plan" class="btn btn-primary" disabled>
+          <i class="fa-solid fa-plus"></i> Add Service Plan
+        </button>
+
+        <button id="btn-edit-plans" class="btn btn-outline" disabled>
+          <i class="fa-solid fa-sliders"></i> Edit Plans
+        </button>
+
+        <button id="btn-undo" class="btn-icon" disabled title="Undo (Ctrl+Z)" style="opacity:0.4;">
+          <i class="fa-solid fa-rotate-left"></i>
+        </button>
+        <button id="btn-redo" class="btn-icon" disabled title="Redo (Ctrl+Shift+Z)" style="opacity:0.4;">
+          <i class="fa-solid fa-rotate-right"></i>
+        </button>
+
+        <div class="spacer"></div>
+
+        <button id="btn-download" class="btn btn-outline" disabled>
+          <i class="fa-solid fa-download"></i> Download
+        </button>
       </div>
 
-      <div class="control-group" style="margin-bottom: 16px;">
-        <input type="file" id="file-upload" accept=".xlsx, .xls">
+      <!-- Main Area -->
+      <div id="main">
+        <!-- Chart Panel -->
+        <div id="chart-panel">
+          <svg id="chart-svg"></svg>
+          <div id="chart-legend"></div>
+          <div id="chart-tooltip"></div>
+        </div>
+
+        <!-- Detail Panel -->
+        <div id="detail-panel">
+          <div class="empty-state" id="detail-empty">
+            <i class="fa-solid fa-hand-pointer"></i>
+            <p>Click a service on the chart<br>to view &amp; edit its schedule</p>
+          </div>
+          <div id="detail-content" style="display:none; flex-direction:column; flex:1;"></div>
+        </div>
       </div>
 
-      <div class="controls-container" id="editor-controls" style="display: none;">
+    </div>
 
-        <div class="divider"></div>
+    <!-- ============================================================
+Modals (hidden by default)
+============================================================ -->
 
-        <div class="control-group">
-          <label>Corridor View</label>
-          <span class="sub-label">Select main corridor to visualize</span>
-          <select id="corridor-select"></select>
+    <!-- Add Service Plan Modal -->
+    <div id="modal-add-plan" class="modal-overlay" style="display:none;">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Add Service Plan</h2>
+          <button class="btn-icon" onclick="closeModal('modal-add-plan')">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
         </div>
-
-        <div class="divider"></div>
-
-        <div class="control-group">
-          <label>Service Editor</label>
-          <span class="sub-label">Select line to configure</span>
-          <select id="line-select"></select>
-        </div>
-
-        <div class="control-group">
-          <label>Start Time Offset (Mins)</label>
-          <div style="display: flex; gap: 12px; align-items: center;">
-            <input type="range" id="start-offset-slider" min="300" max="1440" step="1" value="300" style="flex-grow: 1; margin: 0;">
-            <input type="number" id="start-offset-number" min="300" max="1440" step="1" value="300" style="width: 80px;">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Service</label>
+            <select id="add-service-select" class="form-select" style="width:100%;"></select>
           </div>
-          <span class="sub-label" id="offset-display">05:00</span>
-        </div>
-
-        <div class="control-group">
-          <label>Hourly Headway (Mins)</label>
-          <span class="sub-label">Set to 0 for no service</span>
-          <div id="intervals-grid">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Headway (min)</label>
+              <input id="add-headway" class="form-input" type="number" value="15" min="1" step="1">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Start Offset (min from midnight)</label>
+              <input id="add-start-offset" class="form-input" type="number" value="360" min="0" max="1440" step="1">
+            </div>
           </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Direction</label>
+              <select id="add-direction" class="form-select" style="width:100%;">
+                <option value="both">Both (North &amp; South)</option>
+                <option value="north">North only</option>
+                <option value="south">South only</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Color</label>
+              <div id="add-color-palette" class="color-palette"></div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal('modal-add-plan')">Cancel</button>
+          <button class="btn btn-primary" id="btn-add-plan-confirm">Add Plan</button>
         </div>
       </div>
     </div>
 
-    <div id="main-content">
-      <div id="chart-container"></div>
+    <!-- Edit Service Plans Modal -->
+    <div id="modal-edit-plans" class="modal-overlay" style="display:none;">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Service Plans</h2>
+          <button class="btn-icon" onclick="closeModal('modal-edit-plans')">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <div class="modal-body" id="edit-plans-list">
+          <p style="color:var(--text-muted); font-size:13px;">No service plans yet.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal('modal-edit-plans')">Close</button>
+        </div>
+      </div>
     </div>
 
-    <script src="planner.js"></script>
+    <!-- Upload Overlay -->
+    <div id="upload-overlay">
+      <div class="upload-card" id="upload-card">
+        <i class="fa-solid fa-file-excel"></i>
+        <h2>Upload Excel File</h2>
+        <p>Click or drag &amp; drop a .xlsx file with service sheets</p>
+        <input type="file" id="file-input" accept=".xlsx,.xls" style="display:none;">
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast"></div>
+
+    <!-- ============================================================
+JavaScript Application
+============================================================ -->
+    <script>
+// =============================================================
+// STATE
+// =============================================================
+const STATE = {
+  services: {},            // { serviceKey: { nodes: [...], baseRunningTime: {...}, baseDwellTime: {...}, positions: {...} } }
+  corridorView: null,      // serviceKey for Y-axis
+  servicePlans: [],        // [{ id, serviceKey, headwayMin, startOffsetMin, direction, color, visible, services: [...] }]
+  selectedService: null,   // { planId, serviceIndex }
+  planColorIndex: 0,
+  undoStack: [],
+  redoStack: [],
+  maxUndo: 50
+};
+
+const PLAN_COLORS = [
+  '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6',
+  '#ec4899', '#06b6d4', '#f97316', '#14b8a6', '#6366f1',
+  '#84cc16', '#e11d48', '#0ea5e9', '#a855f7', '#d946ef'
+];
+
+// =============================================================
+// UTILITY FUNCTIONS
+// =============================================================
+function formatTimeHHMM(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function parseTimeHHMM(str) {
+  const parts = str.split(':');
+  return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+}
+
+function showToast(msg, isError = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (isError ? ' error' : '');
+  clearTimeout(el._timeout);
+  el._timeout = setTimeout(() => el.className = '', 2200);
+}
+
+function openModal(id) {
+  document.getElementById(id).style.display = 'flex';
+}
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+function generateId() {
+  return 'plan-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+}
+
+// =============================================================
+// UNDO / REDO
+// =============================================================
+function snapshotState() {
+  return {
+    servicePlans: STATE.servicePlans.map(p => ({
+      ...p,
+      services: p.services.map(s => ({
+        ...s,
+        times: s.times.map(t => ({ ...t }))
+      }))
+    })),
+    selectedService: STATE.selectedService ? { ...STATE.selectedService } : null,
+    planColorIndex: STATE.planColorIndex
+  };
+}
+
+function restoreSnapshot(snap) {
+  STATE.servicePlans = snap.servicePlans;
+  STATE.selectedService = snap.selectedService;
+  STATE.planColorIndex = snap.planColorIndex;
+}
+
+function pushUndo() {
+  STATE.undoStack.push(snapshotState());
+  if (STATE.undoStack.length > STATE.maxUndo) STATE.undoStack.shift();
+  STATE.redoStack = [];
+  updateUndoButtons();
+}
+
+function undo() {
+  if (STATE.undoStack.length === 0) return;
+  STATE.redoStack.push(snapshotState());
+  const snap = STATE.undoStack.pop();
+  restoreSnapshot(snap);
+  updateChart();
+  updateDetailPanel();
+  updatePlansModal();
+  updateUndoButtons();
+}
+
+function redo() {
+  if (STATE.redoStack.length === 0) return;
+  STATE.undoStack.push(snapshotState());
+  const snap = STATE.redoStack.pop();
+  restoreSnapshot(snap);
+  updateChart();
+  updateDetailPanel();
+  updatePlansModal();
+  updateUndoButtons();
+}
+
+function updateUndoButtons() {
+  const uBtn = document.getElementById('btn-undo');
+  const rBtn = document.getElementById('btn-redo');
+  if (uBtn) {
+    uBtn.disabled = STATE.undoStack.length === 0;
+    uBtn.style.opacity = STATE.undoStack.length === 0 ? '0.4' : '1';
+  }
+  if (rBtn) {
+    rBtn.disabled = STATE.redoStack.length === 0;
+    rBtn.style.opacity = STATE.redoStack.length === 0 ? '0.4' : '1';
+  }
+}
+
+// =============================================================
+// FILE UPLOAD & PARSING
+// =============================================================
+const fileInput = document.getElementById('file-input');
+const uploadCard = document.getElementById('upload-card');
+const uploadOverlay = document.getElementById('upload-overlay');
+
+uploadCard.addEventListener('click', () => fileInput.click());
+
+uploadCard.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadCard.style.borderColor = 'var(--accent)';
+  uploadCard.style.background = 'var(--accent-light)';
+});
+uploadCard.addEventListener('dragleave', () => {
+  uploadCard.style.borderColor = 'var(--border)';
+  uploadCard.style.background = '';
+});
+uploadCard.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadCard.style.borderColor = 'var(--border)';
+  uploadCard.style.background = '';
+  const file = e.dataTransfer.files[0];
+  if (file) processFile(file);
+});
+
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  if (file) processFile(file);
+});
+
+function processFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+
+      const services = {};
+      workbook.SheetNames.forEach(sheetName => {
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet);
+
+        if (rows.length === 0) return;
+
+        const nodes = [];
+        const positions = {};
+        const baseRunningTime = {};
+        const baseDwellTime = {};
+
+        rows.forEach((row, i) => {
+          const name = row['Station_name'];
+          const km = parseFloat(row['Distance [km]']);
+          const timeMin = parseFloat(row['Time [min]']);
+          const dwellS = parseFloat(row['Dwell_Time [s]']) || 0;
+
+          nodes.push({
+            name,
+            km,
+            time_min: timeMin,
+            dwell_s: dwellS,
+            dwell_min: dwellS / 60
+          });
+          positions[name] = km;
+          baseDwellTime[name] = dwellS / 60;  // minimum dwell in minutes
+
+          if (i > 0) {
+            const prevName = rows[i - 1]['Station_name'];
+            const prevTime = parseFloat(rows[i - 1]['Time [min]']);
+            const rt = Math.max(timeMin - prevTime, 0.1);
+            baseRunningTime[`${prevName}→${name}`] = rt;
+          }
+        });
+
+        services[sheetName] = { nodes, positions, baseRunningTime, baseDwellTime };
+      });
+
+      STATE.services = services;
+      STATE.corridorView = Object.keys(services)[0] || null;
+
+      // Enable UI
+      document.getElementById('corridor-select').disabled = false;
+      document.getElementById('btn-add-plan').disabled = false;
+      document.getElementById('btn-edit-plans').disabled = false;
+      document.getElementById('btn-download').disabled = false;
+
+      populateCorridorSelect();
+      populateAddPlanModal();
+      updateChart();
+      uploadOverlay.style.display = 'none';
+
+      showToast(`Loaded ${Object.keys(services).length} services`);
+    } catch (err) {
+      console.error(err);
+      showToast('Error parsing file: ' + err.message, true);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// =============================================================
+// CORRIDOR SELECT
+// =============================================================
+function populateCorridorSelect() {
+  const sel = document.getElementById('corridor-select');
+  sel.innerHTML = '';
+  Object.keys(STATE.services).forEach(key => {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = key;
+    if (key === STATE.corridorView) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+document.getElementById('corridor-select').addEventListener('change', function() {
+  STATE.corridorView = this.value;
+  updateChart();
+});
+
+// =============================================================
+// ADD PLAN MODAL
+// =============================================================
+function populateAddPlanModal() {
+  const sel = document.getElementById('add-service-select');
+  sel.innerHTML = '';
+  Object.keys(STATE.services).forEach(key => {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = key;
+    sel.appendChild(opt);
+  });
+
+  // Color palette
+  const palette = document.getElementById('add-color-palette');
+  palette.innerHTML = '';
+  PLAN_COLORS.forEach((color, i) => {
+    const swatch = document.createElement('div');
+    swatch.className = 'color-swatch' + (i === 0 ? ' selected' : '');
+    swatch.style.background = color;
+    swatch.dataset.color = color;
+    swatch.addEventListener('click', () => {
+      palette.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+      swatch.classList.add('selected');
+    });
+    palette.appendChild(swatch);
+  });
+}
+
+document.getElementById('btn-add-plan').addEventListener('click', () => {
+  populateAddPlanModal();
+  openModal('modal-add-plan');
+});
+
+document.getElementById('btn-add-plan-confirm').addEventListener('click', () => {
+  const serviceKey = document.getElementById('add-service-select').value;
+  const headwayMin = parseInt(document.getElementById('add-headway').value) || 15;
+  const startOffsetMin = parseInt(document.getElementById('add-start-offset').value) || 360;
+  const direction = document.getElementById('add-direction').value;
+  const selectedColor = document.querySelector('#add-color-palette .color-swatch.selected');
+  const color = selectedColor ? selectedColor.dataset.color : PLAN_COLORS[STATE.planColorIndex % PLAN_COLORS.length];
+  STATE.planColorIndex++;
+
+  if (!serviceKey) {
+    showToast('Please select a service', true);
+    return;
+  }
+  if (headwayMin < 1) {
+    showToast('Headway must be at least 1 minute', true);
+    return;
+  }
+
+  pushUndo();
+  const plan = createServicePlan(serviceKey, headwayMin, startOffsetMin, direction, color);
+  STATE.servicePlans.push(plan);
+  closeModal('modal-add-plan');
+  updateChart();
+  updatePlansModal();
+  showToast(`Added plan for ${serviceKey}`);
+});
+
+// Build array of { node, arr, dep } for a single trip
+function buildTripTimesForService(nodes, startTimeMin, baseRunningTime) {
+  const times = [];
+  let currentTime = startTimeMin;
+
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const arr = currentTime;
+    const dep = arr + node.dwell_min;
+    times.push({ node: node.name, arr, dep });
+
+    currentTime = dep;
+    if (i < nodes.length - 1) {
+      const nextNode = nodes[i + 1];
+      const key = `${node.name}→${nextNode.name}`;
+      // Try both directions for running time
+      const rt = baseRunningTime[key] || baseRunningTime[`${nextNode.name}→${node.name}`] || 1;
+      currentTime += rt;
+    }
+  }
+
+  return times;
+}
+
+function createServicePlan(serviceKey, headwayMin, startOffsetMin, direction, color) {
+  const data = STATE.services[serviceKey];
+  if (!data) return null;
+
+  const nodes = data.nodes;
+  const baseRT = data.baseRunningTime;
+
+  const plan = {
+    id: generateId(),
+    serviceKey,
+    headwayMin,
+    startOffsetMin,
+    direction,
+    color,
+    visible: true,
+    services: []
+  };
+
+  const DAY_END = 1440;
+  let evenId = 2, oddId = 1;
+
+  // Unique even/odd IDs across all plans (north=even, south=odd)
+  const allIds = STATE.servicePlans.flatMap(p => p.services.map(s => s.serviceId));
+  const maxEven = Math.max(0, ...allIds.filter(id => id % 2 === 0));
+  const maxOdd  = Math.max(-1, ...allIds.filter(id => id % 2 !== 0));
+  evenId = maxEven + 2;
+  oddId  = maxOdd  + 2;  // -1 base → first odd = 1, then 3, 5...
+
+  for (let t = startOffsetMin; t <= DAY_END; t += headwayMin) {
+    if (direction === 'north' || direction === 'both') {
+      const times = buildTripTimesForService(nodes, t, baseRT);
+      plan.services.push({ serviceId: evenId, direction: 'north', times });
+      evenId += 2;
+    }
+    if (direction === 'south' || direction === 'both') {
+      const revNodes = [...nodes].reverse();
+      const times = buildTripTimesForService(revNodes, t, baseRT);
+      plan.services.push({ serviceId: oddId, direction: 'south', times });
+      oddId += 2;
+    }
+  }
+
+  return plan;
+}
+
+// =============================================================
+// EDIT PLANS MODAL
+// =============================================================
+document.getElementById('btn-edit-plans').addEventListener('click', () => {
+  updatePlansModal();
+  openModal('modal-edit-plans');
+});
+
+function updatePlansModal() {
+  const container = document.getElementById('edit-plans-list');
+  if (STATE.servicePlans.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-muted); font-size:13px;">No service plans yet.</p>';
+    return;
+  }
+
+  container.innerHTML = STATE.servicePlans.map(plan => `
+<div class="plan-list-item ${plan.visible ? '' : 'hidden'}">
+<div class="plan-color" style="background:${plan.color};"></div>
+<span class="plan-name">${plan.serviceKey} (${plan.services.length} services)</span>
+<span style="font-size:11px;color:var(--text-muted);">
+${plan.headwayMin}' / ${plan.direction}
+</span>
+<button class="btn-icon" title="${plan.visible ? 'Hide' : 'Show'}"
+onclick="togglePlanVisibility('${plan.id}')">
+<i class="fa-solid fa-${plan.visible ? 'eye' : 'eye-slash'}"></i>
+</button>
+<button class="btn-icon" title="Delete"
+style="color:var(--danger);"
+onclick="deletePlan('${plan.id}')">
+<i class="fa-solid fa-trash"></i>
+</button>
+</div>
+`).join('');
+}
+
+function togglePlanVisibility(planId) {
+  const plan = STATE.servicePlans.find(p => p.id === planId);
+  if (!plan) return;
+  plan.visible = !plan.visible;
+  updateChart();
+  updatePlansModal();
+}
+
+function deletePlan(planId) {
+  pushUndo();
+  STATE.servicePlans = STATE.servicePlans.filter(p => p.id !== planId);
+  if (STATE.selectedService && STATE.selectedService.planId === planId) {
+    STATE.selectedService = null;
+    hideDetailPanel();
+  }
+  updateChart();
+  updatePlansModal();
+  showToast('Service plan deleted');
+}
+
+// =============================================================
+// DOWNLOAD
+// =============================================================
+document.getElementById('btn-download').addEventListener('click', () => {
+  const workbook = XLSX.utils.book_new();
+
+  STATE.servicePlans.forEach(plan => {
+    if (!plan.visible) return;
+
+    const rows = [];
+    plan.services.forEach(svc => {
+      svc.times.forEach(t => {
+        rows.push({
+          service_name: plan.serviceKey,
+          service_id: svc.serviceId,
+          direction: svc.direction,
+          station: t.node,
+          arrival: formatTimeHHMM(t.arr),
+          departure: formatTimeHHMM(t.dep),
+          arrival_min: Math.round(t.arr * 100) / 100,
+          departure_min: Math.round(t.dep * 100) / 100
+        });
+      });
+    });
+
+    if (rows.length === 0) return;
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 }
+    ];
+    XLSX.utils.book_append_sheet(workbook, ws, plan.serviceKey);
+  });
+
+  if (workbook.SheetNames.length === 0) {
+    showToast('No data to download', true);
+    return;
+  }
+
+  XLSX.writeFile(workbook, 'timetable.xlsx');
+  showToast('Timetable downloaded');
+});
+
+// =============================================================
+// D3.js CHART
+// =============================================================
+let chartState = {
+  svg: null,
+  chartG: null,
+  xScale: null,
+  yScale: null,
+  xAxis: null,
+  yAxis: null,
+  zoom: null,
+  width: 0,
+  height: 0,
+  margin: { top: 30, right: 40, bottom: 40, left: 120 }
+};
+
+function initChart() {
+  const panel = document.getElementById('chart-panel');
+  const svg = d3.select('#chart-svg');
+
+  svg.selectAll('*').remove();
+
+  const rect = panel.getBoundingClientRect();
+  const width = rect.width;
+  const height = rect.height;
+
+  chartState.width = width;
+  chartState.height = height;
+  chartState.margin.left = Math.max(90, width * 0.12);
+
+  const m = chartState.margin;
+  const innerW = width - m.left - m.right;
+  const innerH = height - m.top - m.bottom;
+
+  svg.attr('width', width).attr('height', height);
+
+  // Background rect
+  svg.append('rect')
+    .attr('width', '100%')
+    .attr('height', '100%')
+    .attr('fill', '#fafbfc');
+
+  // ---- Fixed chart group (margin offset only) ----
+  const chartG = svg.append('g')
+  .attr('transform', `translate(${m.left},${m.top})`);
+
+  // ---- Clip path (defined on chartG, covers the plot area) ----
+  chartG.append('defs').append('clipPath')
+    .attr('id', 'chart-clip')
+    .append('rect')
+    .attr('x', 0)
+    .attr('y', 0)
+    .attr('width', innerW)
+    .attr('height', innerH);
+
+  // ---- Zoomable group (contains everything that pans/zooms) ----
+  const zoomG = chartG.append('g').attr('class', 'zoom-group');
+
+  // Y-axis grid lines (drawn first = behind data)
+  const yGridG = zoomG.append('g').attr('class', 'y-grid-layer');
+
+  // Data layer (clipped, drawn on top of grid)
+  const drawG = zoomG.append('g')
+  .attr('clip-path', 'url(#chart-clip)');
+
+  // Y-axis (inside zoomG to pan vertically with the data)
+  const yAxisG = zoomG.append('g').attr('class', 'axis axis-y');
+
+  // ---- Fixed layers (outside zoomG, always visible) ----
+  // X-axis grid lines (fixed, outside zoomG — but clipped to plot area)
+  const xGridG = chartG.append('g')
+  .attr('class', 'x-grid-layer')
+  .attr('clip-path', 'url(#chart-clip)');
+
+  // X-axis (fixed at bottom)
+  const xAxisG = chartG.append('g').attr('class', 'axis axis-x')
+  .attr('transform', `translate(0,${innerH})`);
+
+  // Scales
+  const xScale = d3.scaleLinear().range([0, innerW]);
+  const yScale = d3.scaleLinear().range([innerH, 0]);
+
+  // ---- Zoom behavior ----
+  const zoom = d3.zoom()
+  .scaleExtent([0.3, 25])
+  .extent([[0, 0], [innerW, innerH]])
+  .on('zoom', (event) => {
+    const t = event.transform;
+    const k = t.k;
+    const ik = 1 / k;  // inverse scale
+
+    // Transform the zoomable group (data + Y axis + Y grid all move together)
+    zoomG.attr('transform', t);
+
+    // Scale stroke-widths and node radii inversely so they stay sharp
+    // Use .style() not .attr() — CSS otherwise overrides the SVG attribute
+    zoomG.selectAll('.service-path').style('stroke-width', (1.8 * ik) + 'px');
+    zoomG.selectAll('.service-path.selected').style('stroke-width', (3.2 * ik) + 'px');
+    zoomG.selectAll('.service-hitarea').style('stroke-width', (14 * ik) + 'px');
+    zoomG.selectAll('.node-dot')
+      .attr('r', 5 * ik)
+      .style('stroke-width', (1.5 * ik) + 'px');
+
+    // Rescale X and redraw the fixed X-axis with the rescaled domain
+    const rx = t.rescaleX(xScale);
+    const numTicks = Math.max(2, Math.floor(innerW / (70 * k)));
+
+    xAxisG.call(
+      d3.axisBottom(rx)
+        .tickFormat(d => formatTimeHHMM(d))
+        .ticks(numTicks)
+    );
+
+    xGridG.call(
+      d3.axisBottom(rx)
+        .tickSize(-innerH)
+        .tickSizeOuter(0)
+        .tickFormat('')
+        .ticks(numTicks)
+    );
+    xGridG.select('.domain').remove();
+  });
+
+  svg.call(zoom);
+
+  // Store references
+  chartState.svg = svg;
+  chartState.chartG = chartG;
+  chartState.zoomG = zoomG;
+  chartState.drawG = drawG;
+  chartState.yGridG = yGridG;
+  chartState.xGridG = xGridG;
+  chartState.xAxisG = xAxisG;
+  chartState.yAxisG = yAxisG;
+  chartState.xScale = xScale;
+  chartState.yScale = yScale;
+  chartState.zoom = zoom;
+  chartState.innerW = innerW;
+  chartState.innerH = innerH;
+  chartState.m = m;
+}
+
+function updateChart() {
+  if (!STATE.corridorView || !STATE.services[STATE.corridorView]) return;
+
+  const corridorData = STATE.services[STATE.corridorView];
+  const corridorNodes = corridorData.nodes;
+  const corridorPositions = corridorData.positions;
+
+  // Initialize chart if needed
+  if (!chartState.svg) {
+    initChart();
+  }
+
+  const { drawG, yGridG, xGridG, xAxisG, yAxisG, xScale, yScale, innerW, innerH, m, svg } = chartState;
+
+  // Clear previous draws
+  drawG.selectAll('.service-layer').remove();
+  drawG.selectAll('.node-layer').remove();
+  drawG.selectAll('.hitarea-layer').remove();
+  yGridG.selectAll('*').remove();
+
+  // ---- Compute visible time range ----
+  const allVisibleServices = STATE.servicePlans
+  .filter(p => p.visible)
+  .flatMap(p => p.services);
+
+  if (allVisibleServices.length === 0) {
+    updateYAxis(corridorNodes, corridorPositions, yScale, yAxisG, yGridG, innerW);
+    xAxisG.call(d3.axisBottom(xScale).tickFormat(''));
+    xGridG.call(d3.axisBottom(xScale).tickSize(-innerH).tickSizeOuter(0).tickFormat(''));
+    xGridG.select('.domain').remove();
+    updateLegend();
+    return;
+  }
+
+  const allTimes = allVisibleServices.flatMap(s => s.times.flatMap(t => [t.arr, t.dep]));
+  const tMin = d3.min(allTimes) - 10;
+  const tMax = d3.max(allTimes) + 10;
+
+  xScale.domain([tMin, tMax]).range([0, innerW]);
+
+  // Y scale: use corridor positions (km)
+  const allKm = corridorNodes.map(n => n.km);
+  const kmMin = d3.min(allKm);
+  const kmMax = d3.max(allKm);
+  const yPad = (kmMax - kmMin) * 0.05;
+  yScale.domain([kmMax + yPad, kmMin - yPad]).range([0, innerH]);
+
+  // ---- Draw Y grid lines + labels ----
+  updateYAxis(corridorNodes, corridorPositions, yScale, yAxisG, yGridG, innerW);
+
+  // ---- Draw services ----
+  const plansLayer = drawG.append('g').attr('class', 'service-layer');
+  const hitareaLayer = drawG.append('g').attr('class', 'hitarea-layer');
+
+  // Store per-service drag state for smooth updates
+  if (!chartState._serviceData) chartState._serviceData = [];
+  chartState._serviceData = [];
+
+  STATE.servicePlans.filter(p => p.visible).forEach(plan => {
+    plan.services.forEach((svc, svcIdx) => {
+      // Build polyline points with station interpolation
+      const points = buildServicePoints(svc, corridorNodes, corridorPositions);
+      if (points.length < 2) return;
+
+      const isSelected = STATE.selectedService &&
+        STATE.selectedService.planId === plan.id &&
+        STATE.selectedService.serviceIndex === svcIdx;
+
+      const lineGen = d3.line()
+      .x(d => xScale(d[0]))
+      .y(d => yScale(d[1]));
+
+      // Store for drag updates
+      chartState._serviceData.push({
+        plan, svc, svcIdx, points, isSelected, lineGen,
+        planId: plan.id, serviceKey: plan.serviceKey
+      });
+
+      // Hit area
+      hitareaLayer.append('path')
+        .datum(points)
+        .attr('d', lineGen)
+        .attr('class', 'service-hitarea')
+        .on('click', () => selectService(plan.id, svcIdx));
+
+      // Visible path (with unique class for update targeting)
+      const pathClass = `path-${plan.id.replace(/[^a-zA-Z0-9]/g, '')}-${svcIdx}`;
+      plansLayer.append('path')
+        .datum(points)
+        .attr('d', lineGen)
+        .attr('class', `service-path ${pathClass}${isSelected ? ' selected' : ''}`)
+        .attr('stroke', plan.color)
+        .attr('opacity', isSelected ? 1 : 0.75)
+        .attr('data-plan-id', plan.id)
+        .attr('data-svc-idx', svcIdx)
+        .on('mouseover', function(event) {
+          if (STATE.selectedService &&
+            STATE.selectedService.planId === plan.id &&
+            STATE.selectedService.serviceIndex === svcIdx) return;
+          d3.select(this).attr('stroke-width', 3).attr('opacity', 1);
+        })
+        .on('mouseout', function() {
+          if (STATE.selectedService &&
+            STATE.selectedService.planId === plan.id &&
+            STATE.selectedService.serviceIndex === svcIdx) return;
+          d3.select(this).attr('stroke-width', 1.8).attr('opacity', 0.75);
+        })
+        .on('click', () => selectService(plan.id, svcIdx));
+    });
+  });
+
+  // Draw draggable nodes for the SELECTED service only
+  // (non-selected services get no visible nodes)
+  if (STATE.selectedService) {
+    const selData = chartState._serviceData.find(d =>
+      d.planId === STATE.selectedService.planId &&
+        d.svcIdx === STATE.selectedService.serviceIndex
+    );
+    if (selData) {
+      const nodesLayer = drawG.append('g').attr('class', 'node-layer');
+      renderDraggableNodes(nodesLayer, selData, corridorNodes, corridorPositions, xScale, yScale);
+    }
+  }
+
+  // X Axis (already positioned at bottom in initChart)
+  xAxisG.call(
+    d3.axisBottom(xScale)
+      .tickFormat(d => formatTimeHHMM(d))
+      .ticks(Math.max(2, Math.floor(innerW / 80)))
+  );
+
+  // X Grid
+  xGridG.call(
+    d3.axisBottom(xScale)
+      .tickSize(-innerH)
+      .tickSizeOuter(0)
+      .tickFormat('')
+      .ticks(Math.max(2, Math.floor(innerW / 80)))
+  );
+  xGridG.select('.domain').remove();
+
+  // Legend
+  updateLegend();
+
+  // Re-select highlight
+  if (STATE.selectedService) {
+    highlightSelectedService();
+  }
+
+  // Re-apply zoom scaling to newly drawn elements
+  applyZoomScale();
+}
+
+function applyZoomScale() {
+  const t = d3.zoomTransform(chartState.svg.node());
+  if (t.k === 1 && t.x === 0 && t.y === 0) return; // identity, nothing to do
+  const ik = 1 / t.k;
+  chartState.zoomG.selectAll('.service-path').style('stroke-width', (1.8 * ik) + 'px');
+  chartState.zoomG.selectAll('.service-path.selected').style('stroke-width', (3.2 * ik) + 'px');
+  chartState.zoomG.selectAll('.service-hitarea').style('stroke-width', (14 * ik) + 'px');
+  chartState.zoomG.selectAll('.node-dot')
+    .attr('r', 5 * ik)
+    .style('stroke-width', (1.5 * ik) + 'px');
+}
+
+function updateYAxis(corridorNodes, corridorPositions, yScale, yAxisG, yGridG, innerW) {
+  // Y axis with station labels (drawn inside yAxisG, which is in zoomG)
+  yAxisG.call(d3.axisLeft(yScale)
+    .tickValues(corridorNodes.map(n => n.km))
+    .tickFormat(d => {
+      const node = corridorNodes.find(n => n.km === d);
+      return node ? node.name : '';
+    })
+  );
+
+  // Horizontal grid lines (drawn in yGridG, inside zoomG)
+  yGridG.selectAll('line')
+    .data(corridorNodes)
+    .join('line')
+    .attr('x1', 0)
+    .attr('x2', innerW)
+    .attr('y1', d => yScale(d.km))
+    .attr('y2', d => yScale(d.km))
+    .attr('stroke', '#e2e8f0')
+    .attr('stroke-width', 0.5)
+    .attr('stroke-dasharray', '3 5');
+}
+
+// Build polyline points for a service — only at stations that belong to the corridor
+function buildServicePoints(svc, corridorNodes, corridorPositions) {
+  const points = [];
+  svc.times.forEach((t, idx) => {
+    const km = corridorPositions[t.node];
+    if (km === undefined) return; // station not in this corridor — skip
+    points.push({ t: t.arr, km, node: t.node, stationIdx: idx, isArrival: true });
+    points.push({ t: t.dep, km, node: t.node, stationIdx: idx, isArrival: false });
+  });
+  return points.map(p => [p.t, p.km]);
+}
+
+// Render draggable nodes for a selected service (with smooth updates)
+function renderDraggableNodes(nodesLayer, selData, corridorNodes, corridorPositions, xScale, yScale) {
+  const { plan, svc, svcIdx, points } = selData;
+
+  // Rebuild point metadata (only corridor stations)
+  const pointMeta = [];
+  svc.times.forEach((t, idx) => {
+    const km = corridorPositions[t.node];
+    if (km === undefined) return; // not in corridor
+    pointMeta.push({ t: t.arr, km, node: t.node, stationIdx: idx, isArrival: true });
+    pointMeta.push({ t: t.dep, km, node: t.node, stationIdx: idx, isArrival: false });
+  });
+
+  const circles = nodesLayer.selectAll('circle')
+  .data(pointMeta)
+  .join('circle')
+  .attr('cx', d => xScale(d.t))
+  .attr('cy', d => yScale(d.km))
+  .attr('r', 5)
+  .attr('fill', plan.color)
+  .attr('stroke', '#fff')
+  .attr('stroke-width', 1.5)
+  .attr('class', 'node-dot')
+  .attr('opacity', 1)
+  .style('pointer-events', 'all')
+  .style('cursor', 'ew-resize')
+  .on('mouseover', function(event, d) {
+    const tooltip = document.getElementById('chart-tooltip');
+    const eventType = d.isArrival ? 'Arr' : 'Dep';
+    tooltip.innerHTML = `<b>${d.node}</b> ${eventType}: ${formatTimeHHMM(d.t)}`;
+    tooltip.style.opacity = '1';
+    tooltip.style.left = (event.clientX + 12) + 'px';
+    tooltip.style.top = (event.clientY - 30) + 'px';
+  })
+  .on('mouseout', () => {
+    document.getElementById('chart-tooltip').style.opacity = '0';
+  })
+  .on('mousemove', (event) => {
+    const tooltip = document.getElementById('chart-tooltip');
+    tooltip.style.left = (event.clientX + 12) + 'px';
+    tooltip.style.top = (event.clientY - 30) + 'px';
+  })
+  .call(d3.drag()
+    .on('start', function(event, d) {
+      const t = d3.zoomTransform(chartState.svg.node());
+      const ik = 1 / t.k;
+      d3.select(this).attr('r', 7 * ik).raise();
+      pushUndo();
+      chartState._dragInfo = { svc, plan, d };
+    })
+    .on('drag', function(event, d) {
+      const newX = event.x;
+      const newTime = xScale.invert(newX);
+      const constrained = constrainTime(svc, d.stationIdx, d.isArrival, newTime, plan.serviceKey);
+
+      // Update data model (forward propagation)
+      applyTimeDelta(svc, d.stationIdx, d.isArrival, constrained, plan.serviceKey);
+
+      // Update ALL node positions smoothly
+      updateAllNodePositions(nodesLayer, svc, corridorPositions, plan.serviceKey, xScale, yScale);
+
+      // Update the service path
+      updateServicePath(svc, plan, svcIdx, corridorNodes, corridorPositions, xScale, yScale);
+
+      // Update tooltip
+      const tooltip = document.getElementById('chart-tooltip');
+      const eventType = d.isArrival ? 'Arr' : 'Dep';
+      const newVal = d.isArrival ? svc.times[d.stationIdx].arr : svc.times[d.stationIdx].dep;
+      tooltip.innerHTML = `<b>${d.node}</b> ${eventType}: ${formatTimeHHMM(newVal)}`;
+
+      // Update detail panel
+      updateDetailPanel();
+    })
+    .on('end', function() {
+      const t = d3.zoomTransform(chartState.svg.node());
+      d3.select(this).attr('r', 5 / t.k);
+      chartState._dragInfo = null;
+      enforceConstraints(svc, plan.serviceKey);
+      updateChart();
+      updateDetailPanel();
+    })
+  );
+}
+
+// Apply a time delta to a service, forward-propagating
+function applyTimeDelta(svc, stationIdx, isArrival, newTime, serviceKey) {
+  const oldVal = isArrival ? svc.times[stationIdx].arr : svc.times[stationIdx].dep;
+  const delta = newTime - oldVal;
+  if (Math.abs(delta) < 0.0001) return;
+
+  // Forward propagate: this node's departure onward shifts by delta
+  for (let i = stationIdx; i < svc.times.length; i++) {
+    if (i === stationIdx && isArrival) {
+      svc.times[i].arr += delta;
+    }
+    svc.times[i].dep += delta;
+    if (i + 1 < svc.times.length) {
+      svc.times[i + 1].arr += delta;
+    }
+  }
+
+  enforceConstraints(svc, serviceKey);
+}
+
+// Smoothly update all node circle positions during drag
+function updateAllNodePositions(nodesLayer, svc, corridorPositions, serviceKey, xScale, yScale) {
+  nodesLayer.selectAll('circle').each(function(d) {
+    const timeEntry = svc.times[d.stationIdx];
+    if (!timeEntry) return;
+    const t = d.isArrival ? timeEntry.arr : timeEntry.dep;
+    const km = corridorPositions[d.node];
+    if (km === undefined) return;
+
+    d3.select(this)
+      .attr('cx', xScale(t))
+      .attr('cy', yScale(km));
+  });
+}
+
+// Smoothly update the service path during drag
+function updateServicePath(svc, plan, svcIdx, corridorNodes, corridorPositions, xScale, yScale) {
+  const points = buildServicePoints(svc, corridorNodes, corridorPositions);
+  const lineGen = d3.line()
+  .x(d => xScale(d[0]))
+  .y(d => yScale(d[1]));
+
+  const pathClass = `path-${plan.id.replace(/[^a-zA-Z0-9]/g, '')}-${svcIdx}`;
+  chartState.drawG.selectAll(`.${pathClass}`).attr('d', lineGen(points));
+}
+
+function constrainTime(svc, stationIdx, isArrival, newTimeMin, serviceKey) {
+  const data = STATE.services[serviceKey];
+  if (!data) return newTimeMin;
+
+  const baseRT = data.baseRunningTime;
+  const baseDwell = data.baseDwellTime || {};
+  const times = svc.times;
+
+  // Minimum arrival time at station 0: 0
+  if (stationIdx === 0 && isArrival) {
+    return Math.max(0, newTimeMin);
+  }
+
+  // --- Running time from previous station ---
+  // arrival[stationIdx] - departure[stationIdx-1] >= baseRT
+  if (isArrival && stationIdx > 0) {
+    const prevDep = times[stationIdx - 1].dep;
+    const prevNode = times[stationIdx - 1].node;
+    const thisNode = times[stationIdx].node;
+    const key1 = `${prevNode}→${thisNode}`;
+    const key2 = `${thisNode}→${prevNode}`;
+    const minRT = baseRT[key1] || baseRT[key2] || 0.1;
+    newTimeMin = Math.max(newTimeMin, prevDep + minRT);
+  }
+
+  // --- Dwell time constraint ---
+  // departure - arrival >= baseDwellTime[station]
+  const nodeName = times[stationIdx].node;
+  const minDwell = baseDwell[nodeName] || 0;
+
+  if (!isArrival) {
+    // Dragging departure: must be >= arrival + minDwell
+    newTimeMin = Math.max(newTimeMin, times[stationIdx].arr + minDwell);
+  }
+  // Note: no cap on arrival dragging — the departure shifts forward with it
+  // via applyTimeDelta, so dep - arr >= minDwell is maintained automatically.
+
+  return newTimeMin;
+}
+
+function selectService(planId, serviceIndex) {
+  STATE.selectedService = { planId, serviceIndex };
+  updateChart();
+  updateDetailPanel();
+}
+
+function highlightSelectedService() {
+  // Selection is now handled during updateChart via CSS class 'selected'
+  // and via renderDraggableNodes for the selected service only.
+  // This function is kept as a no-op called from updateChart for compatibility.
+}
+
+function updateLegend() {
+  const legend = document.getElementById('chart-legend');
+  const visiblePlans = STATE.servicePlans.filter(p => p.visible);
+  if (visiblePlans.length === 0) {
+    legend.innerHTML = '';
+    return;
+  }
+  legend.innerHTML = visiblePlans.map(p => `
+<div class="legend-item">
+<div class="legend-swatch" style="background:${p.color};"></div>
+<span>${p.serviceKey} (${p.headwayMin}')</span>
+</div>
+`).join('');
+}
+
+// =============================================================
+// DETAIL PANEL
+// =============================================================
+function updateDetailPanel() {
+  const emptyState = document.getElementById('detail-empty');
+  const content = document.getElementById('detail-content');
+
+  if (!STATE.selectedService) {
+    emptyState.style.display = 'flex';
+    content.style.display = 'none';
+    return;
+  }
+
+  emptyState.style.display = 'none';
+  content.style.display = 'flex';
+
+  const { planId, serviceIndex } = STATE.selectedService;
+  const plan = STATE.servicePlans.find(p => p.id === planId);
+  if (!plan) return;
+  const svc = plan.services[serviceIndex];
+  if (!svc) return;
+
+  content.innerHTML = `
+<div class="detail-header">
+  <div class="service-info">
+    <h3>Service <span style="color:${plan.color};">#${svc.serviceId}</span></h3>
+    <div class="meta">
+      <span class="badge ${svc.direction === 'north' ? 'badge-north' : 'badge-south'}">
+        <i class="fa-solid fa-arrow-${svc.direction === 'north' ? 'up' : 'down'}"></i>
+        ${svc.direction}
+      </span>
+      <span style="margin-left:6px;color:var(--text-muted);">${plan.serviceKey}</span>
+    </div>
+  </div>
+  <button class="btn-danger-text" onclick="deleteService('${planId}', ${serviceIndex})">
+    <i class="fa-solid fa-trash"></i> Delete
+  </button>
+</div>
+<div class="detail-table-wrap">
+  <table class="detail-table">
+    <thead>
+      <tr><th>Station</th><th>Arrival</th><th>Departure</th></tr>
+    </thead>
+    <tbody>
+      ${svc.times.map((t, i) => `
+      <tr>
+        <td class="station-name" title="${t.node}">${t.node}</td>
+        <td>
+          <input class="time-input" type="text"
+            value="${formatTimeHHMM(t.arr)}"
+            data-station="${i}" data-type="arr"
+            onchange="onTimeEdit('${planId}', ${serviceIndex}, ${i}, 'arr', this.value)">
+        </td>
+        <td>
+          <input class="time-input" type="text"
+            value="${formatTimeHHMM(t.dep)}"
+            data-station="${i}" data-type="dep"
+            onchange="onTimeEdit('${planId}', ${serviceIndex}, ${i}, 'dep', this.value)">
+        </td>
+      </tr>
+      `).join('')}
+    </tbody>
+  </table>
+</div>
+`;
+}
+
+function hideDetailPanel() {
+  document.getElementById('detail-empty').style.display = 'flex';
+  document.getElementById('detail-content').style.display = 'none';
+}
+
+function deleteService(planId, serviceIndex) {
+  pushUndo();
+  const plan = STATE.servicePlans.find(p => p.id === planId);
+  if (!plan) return;
+  plan.services.splice(serviceIndex, 1);
+  STATE.selectedService = null;
+  hideDetailPanel();
+  updateChart();
+  updatePlansModal();
+  showToast('Service deleted');
+}
+
+function onTimeEdit(planId, serviceIndex, stationIdx, type, valueStr) {
+  const plan = STATE.servicePlans.find(p => p.id === planId);
+  if (!plan) return;
+  const svc = plan.services[serviceIndex];
+  if (!svc) return;
+
+  const newMinutes = parseTimeHHMM(valueStr);
+  if (isNaN(newMinutes)) {
+    updateDetailPanel();
+    return;
+  }
+
+  const isArrival = (type === 'arr');
+  const constrained = constrainTime(svc, stationIdx, isArrival, newMinutes, plan.serviceKey);
+
+  const oldVal = isArrival ? svc.times[stationIdx].arr : svc.times[stationIdx].dep;
+  const delta = constrained - oldVal;
+
+  if (Math.abs(delta) < 0.001) {
+    updateDetailPanel();
+    return;
+  }
+
+  pushUndo();
+
+  // Forward propagate
+  for (let i = stationIdx; i < svc.times.length; i++) {
+    if (i === stationIdx) {
+      svc.times[i][type] += delta;
+      if (isArrival) svc.times[i].dep += delta;
+    } else {
+      svc.times[i].arr += delta;
+      svc.times[i].dep += delta;
+    }
+  }
+
+  enforceConstraints(svc, plan.serviceKey);
+  updateChart();
+  updateDetailPanel();
+}
+
+function enforceConstraints(svc, serviceKey) {
+  const data = STATE.services[serviceKey];
+  if (!data) return;
+
+  const baseRT = data.baseRunningTime;
+  const baseDwell = data.baseDwellTime || {};
+  const times = svc.times;
+
+  // Enforce running times
+  for (let i = 0; i < times.length - 1; i++) {
+    const rt = times[i + 1].arr - times[i].dep;
+    const nodeA = times[i].node;
+    const nodeB = times[i + 1].node;
+    const minRT = baseRT[`${nodeA}→${nodeB}`] || baseRT[`${nodeB}→${nodeA}`] || 0;
+    if (rt < minRT) {
+      const deficit = minRT - rt;
+      for (let j = i + 1; j < times.length; j++) {
+        times[j].arr += deficit;
+        times[j].dep += deficit;
+      }
+    }
+  }
+
+  // Enforce minimum dwell times
+  for (let i = 0; i < times.length; i++) {
+    const dwell = times[i].dep - times[i].arr;
+    const nodeName = times[i].node;
+    const minDwell = baseDwell[nodeName] || 0;
+    if (dwell < minDwell) {
+      times[i].dep = times[i].arr + minDwell;
+    }
+  }
+}
+
+// =============================================================
+// RESIZE HANDLER
+// =============================================================
+let resizeTimeout;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimeout);
+  resizeTimeout = setTimeout(() => {
+    if (STATE.services && Object.keys(STATE.services).length > 0) {
+      initChart();
+      updateChart();
+      updateDetailPanel();
+    }
+  }, 250);
+});
+
+// Undo/Redo button clicks
+document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-redo').addEventListener('click', redo);
+
+// =============================================================
+// KEYBOARD SHORTCUTS
+// =============================================================
+document.addEventListener('keydown', (e) => {
+  // Ctrl+Z / Cmd+Z = Undo
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+    e.preventDefault();
+    undo();
+    return;
+  }
+  // Ctrl+Shift+Z / Cmd+Shift+Z = Redo
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+    e.preventDefault();
+    redo();
+    return;
+  }
+  if (e.key === 'Escape') {
+    STATE.selectedService = null;
+    hideDetailPanel();
+    updateChart();
+    closeModal('modal-add-plan');
+    closeModal('modal-edit-plans');
+  }
+});
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', function(e) {
+    if (e.target === this) {
+      this.style.display = 'none';
+    }
+  });
+});
+
+// =============================================================
+// INIT
+// =============================================================
+console.log('Marey Chart Service Planner ready');
+console.log('Upload an Excel file to begin.');
+</script>
+
   </body>
 </html>
