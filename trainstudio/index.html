@@ -241,6 +241,42 @@
     box-shadow: 0 0 0 2px rgba(59,130,246,.12);
     }
 
+    .time-filter-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    }
+
+    .time-filter-dash {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin: 0 2px;
+    }
+
+    .time-filter-input {
+    width: 100px;
+    height: 30px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-align: center;
+    outline: none;
+    transition: border-color var(--transition);
+    }
+    .time-filter-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(59,130,246,.12);
+    }
+    .time-filter-input::placeholder {
+    color: var(--text-muted);
+    font-size: 10px;
+    }
+
     .form-select {
     appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2364748b' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
@@ -670,6 +706,13 @@ App Shell
 
         <div class="spacer"></div>
 
+        <span class="time-filter-label">Time:</span>
+        <input id="time-start" class="time-filter-input" type="text" placeholder="Start (HH:MM)" maxlength="5">
+        <span class="time-filter-dash">–</span>
+        <input id="time-end" class="time-filter-input" type="text" placeholder="End (HH:MM)" maxlength="5">
+        <button id="btn-time-apply" class="btn btn-sm btn-outline">Apply</button>
+        <button id="btn-time-reset" class="btn btn-sm btn-ghost" style="font-size:11px;">Reset</button>
+
         <button id="btn-download" class="btn btn-outline" disabled>
           <i class="fa-solid fa-download"></i> Download
         </button>
@@ -792,7 +835,9 @@ const STATE = {
   planColorIndex: 0,
   undoStack: [],
   redoStack: [],
-  maxUndo: 50
+  maxUndo: 50,
+  timeFilterStart: null,   // minutes from midnight (null = auto)
+  timeFilterEnd: null      // minutes from midnight (null = auto)
 };
 
 const PLAN_COLORS = [
@@ -847,7 +892,9 @@ function snapshotState() {
       }))
     })),
     selectedService: STATE.selectedService ? { ...STATE.selectedService } : null,
-    planColorIndex: STATE.planColorIndex
+    planColorIndex: STATE.planColorIndex,
+    timeFilterStart: STATE.timeFilterStart,
+    timeFilterEnd: STATE.timeFilterEnd
   };
 }
 
@@ -855,6 +902,9 @@ function restoreSnapshot(snap) {
   STATE.servicePlans = snap.servicePlans;
   STATE.selectedService = snap.selectedService;
   STATE.planColorIndex = snap.planColorIndex;
+  STATE.timeFilterStart = snap.timeFilterStart;
+  STATE.timeFilterEnd = snap.timeFilterEnd;
+  updateTimeFilterInputs();
 }
 
 function pushUndo() {
@@ -1424,8 +1474,13 @@ function updateChart() {
   }
 
   const allTimes = allVisibleServices.flatMap(s => s.times.flatMap(t => [t.arr, t.dep]));
-  const tMin = d3.min(allTimes) - 10;
-  const tMax = d3.max(allTimes) + 10;
+  let tMin = d3.min(allTimes) - 10;
+  let tMax = d3.max(allTimes) + 10;
+
+  // Apply time filter if set
+  if (STATE.timeFilterStart !== null) tMin = STATE.timeFilterStart;
+  if (STATE.timeFilterEnd !== null)   tMax = STATE.timeFilterEnd;
+  if (tMax <= tMin) tMax = tMin + 60;  // ensure at least 1 hour
 
   xScale.domain([tMin, tMax]).range([0, innerW]);
 
@@ -1996,6 +2051,66 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
       this.style.display = 'none';
     }
   });
+});
+
+// =============================================================
+// TIME FILTER
+// =============================================================
+function applyTimeFilter() {
+  const startStr = document.getElementById('time-start').value.trim();
+  const endStr   = document.getElementById('time-end').value.trim();
+
+  const parsedStart = startStr ? parseTimeHHMM(startStr) : null;
+  const parsedEnd   = endStr   ? parseTimeHHMM(endStr)   : null;
+
+  if (startStr && (parsedStart === null || isNaN(parsedStart))) {
+    showToast('Invalid start time format (use HH:MM)', true);
+    return;
+  }
+  if (endStr && (parsedEnd === null || isNaN(parsedEnd))) {
+    showToast('Invalid end time format (use HH:MM)', true);
+    return;
+  }
+
+  STATE.timeFilterStart = parsedStart;
+  STATE.timeFilterEnd   = parsedEnd;
+
+  // Reset zoom so the filter range fills the view
+  if (chartState.svg && chartState.zoom) {
+    chartState.svg.call(chartState.zoom.transform, d3.zoomIdentity);
+  }
+
+  updateChart();
+}
+
+function resetTimeFilter() {
+  STATE.timeFilterStart = null;
+  STATE.timeFilterEnd = null;
+  document.getElementById('time-start').value = '';
+  document.getElementById('time-end').value = '';
+
+  if (chartState.svg && chartState.zoom) {
+    chartState.svg.call(chartState.zoom.transform, d3.zoomIdentity);
+  }
+
+  updateChart();
+}
+
+function updateTimeFilterInputs() {
+  // Populate with current filter values (e.g. after undo/redo)
+  document.getElementById('time-start').value = STATE.timeFilterStart !== null ? formatTimeHHMM(STATE.timeFilterStart) : '';
+  document.getElementById('time-end').value   = STATE.timeFilterEnd   !== null ? formatTimeHHMM(STATE.timeFilterEnd)   : '';
+}
+
+document.getElementById('btn-time-apply').addEventListener('click', applyTimeFilter);
+document.getElementById('btn-time-reset').addEventListener('click', resetTimeFilter);
+
+// Apply on Enter key in either input
+document.getElementById('time-start').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') applyTimeFilter();
+});
+document.getElementById('time-end').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') applyTimeFilter();
 });
 
 // =============================================================
