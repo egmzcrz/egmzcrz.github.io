@@ -255,7 +255,7 @@
     }
 
     .time-filter-input {
-    width: 100px;
+    width: 110px;
     height: 30px;
     padding: 0 8px;
     border: 1px solid var(--border);
@@ -456,7 +456,7 @@
     }
 
     .detail-table input.time-input {
-    width: 60px;
+    width: 72px;
     height: 28px;
     padding: 0 6px;
     border: 1px solid transparent;
@@ -707,9 +707,9 @@ App Shell
         <div class="spacer"></div>
 
         <span class="time-filter-label">Time:</span>
-        <input id="time-start" class="time-filter-input" type="text" placeholder="Start (HH:MM)" maxlength="5">
+        <input id="time-start" class="time-filter-input" type="text" placeholder="Start (HH:MM:SS)" maxlength="8">
         <span class="time-filter-dash">–</span>
-        <input id="time-end" class="time-filter-input" type="text" placeholder="End (HH:MM)" maxlength="5">
+        <input id="time-end" class="time-filter-input" type="text" placeholder="End (HH:MM:SS)" maxlength="8">
         <button id="btn-time-apply" class="btn btn-sm btn-outline">Apply</button>
         <button id="btn-time-reset" class="btn btn-sm btn-ghost" style="font-size:11px;">Reset</button>
 
@@ -850,14 +850,22 @@ const PLAN_COLORS = [
 // UTILITY FUNCTIONS
 // =============================================================
 function formatTimeHHMM(minutes) {
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  const totalSeconds = Math.round(minutes * 60);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 function parseTimeHHMM(str) {
   const parts = str.split(':');
-  return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+  if (parts.length === 3) {
+    return parseInt(parts[0]) * 60 + parseInt(parts[1]) + parseInt(parts[2]) / 60;
+  }
+  if (parts.length === 2) {
+    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+  }
+  return NaN;
 }
 
 function showToast(msg, isError = false) {
@@ -1260,13 +1268,12 @@ function deletePlan(planId) {
 document.getElementById('btn-download').addEventListener('click', () => {
   const workbook = XLSX.utils.book_new();
 
+  const allRows = [];
   STATE.servicePlans.forEach(plan => {
     if (!plan.visible) return;
-
-    const rows = [];
     plan.services.forEach(svc => {
       svc.times.forEach(t => {
-        rows.push({
+        allRows.push({
           service_name: plan.serviceKey,
           service_id: svc.serviceId,
           direction: svc.direction,
@@ -1278,20 +1285,18 @@ document.getElementById('btn-download').addEventListener('click', () => {
         });
       });
     });
-
-    if (rows.length === 0) return;
-
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [
-      { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 }
-    ];
-    XLSX.utils.book_append_sheet(workbook, ws, plan.serviceKey);
   });
 
-  if (workbook.SheetNames.length === 0) {
+  if (allRows.length === 0) {
     showToast('No data to download', true);
     return;
   }
+
+  const ws = XLSX.utils.json_to_sheet(allRows);
+  ws['!cols'] = [
+    { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 11 }, { wch: 11 }, { wch: 12 }, { wch: 12 }
+  ];
+  XLSX.utils.book_append_sheet(workbook, ws, 'timetable');
 
   XLSX.writeFile(workbook, 'timetable.xlsx');
   showToast('Timetable downloaded');
@@ -2069,11 +2074,11 @@ function applyTimeFilter() {
   const parsedEnd   = endStr   ? parseTimeHHMM(endStr)   : null;
 
   if (startStr && (parsedStart === null || isNaN(parsedStart))) {
-    showToast('Invalid start time format (use HH:MM)', true);
+    showToast('Invalid start time format (use HH:MM or HH:MM:SS)', true);
     return;
   }
   if (endStr && (parsedEnd === null || isNaN(parsedEnd))) {
-    showToast('Invalid end time format (use HH:MM)', true);
+    showToast('Invalid end time format (use HH:MM or HH:MM:SS)', true);
     return;
   }
 
