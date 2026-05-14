@@ -1006,6 +1006,7 @@ function processFile(file) {
         const positions = {};
         const baseRunningTime = {};
         const baseDwellTime = {};
+        const singleTrackSegments = [];
 
         rows.forEach((row, i) => {
           const name = row['Station_name'];
@@ -1028,10 +1029,22 @@ function processFile(file) {
             const prevTime = parseFloat(rows[i - 1]['Time [min]']);
             const rt = Math.max(timeMin - prevTime, 0.1);
             baseRunningTime[`${prevName}→${name}`] = rt;
+
+            // Track type: single-track segments get a red band
+            const trackType = (row['track_type'] || '').toString().toLowerCase().trim();
+            if (trackType === 'single') {
+              const prevKm = parseFloat(rows[i - 1]['Distance [km]']);
+              singleTrackSegments.push({
+                fromStation: prevName,
+                toStation: name,
+                fromKm: prevKm,
+                toKm: km
+              });
+            }
           }
         });
 
-        services[sheetName] = { nodes, positions, baseRunningTime, baseDwellTime };
+        services[sheetName] = { nodes, positions, baseRunningTime, baseDwellTime, singleTrackSegments };
       });
 
       STATE.services = services;
@@ -1459,6 +1472,7 @@ function updateChart() {
   const { drawG, yGridG, xGridG, xAxisG, yAxisG, xScale, yScale, innerW, innerH, m, svg } = chartState;
 
   // Clear previous draws
+  drawG.selectAll('.single-track-layer').remove();
   drawG.selectAll('.service-layer').remove();
   drawG.selectAll('.node-layer').remove();
   drawG.selectAll('.hitarea-layer').remove();
@@ -1497,6 +1511,28 @@ function updateChart() {
   const kmMax = d3.max(allKm);
   const yPad = (kmMax - kmMin) * 0.05;
   yScale.domain([kmMax + yPad, kmMin - yPad]).range([0, innerH]);
+
+  // ---- Draw single-track segments (red bands behind everything) ----
+  const stSegs = corridorData.singleTrackSegments;
+  if (stSegs && stSegs.length > 0) {
+    const stLayer = drawG.append('g').attr('class', 'single-track-layer');
+    const xFull = xScale(tMax) - xScale(tMin);
+    stSegs.forEach(seg => {
+      const y1 = yScale(seg.fromKm);
+      const y2 = yScale(seg.toKm);
+      const yTop = Math.min(y1, y2);
+      const yH = Math.abs(y2 - y1);
+      stLayer.append('rect')
+        .attr('x', xScale(tMin))
+        .attr('y', yTop)
+        .attr('width', xFull)
+        .attr('height', Math.max(yH, 1))
+        .attr('fill', 'rgba(239, 68, 68, 0.10)')
+        .attr('stroke', 'rgba(239, 68, 68, 0.22)')
+        .attr('stroke-width', 0.5)
+        .attr('stroke-dasharray', '6 4');
+    });
+  }
 
   // ---- Draw Y grid lines + labels ----
   updateYAxis(corridorNodes, corridorPositions, yScale, yAxisG, yGridG, innerW);
