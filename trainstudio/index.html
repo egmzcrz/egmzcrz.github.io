@@ -1487,11 +1487,24 @@ function updateChart() {
   .flatMap(p => p.services);
 
   if (allVisibleServices.length === 0) {
+    // Set Y scale domain from corridor stations so they display immediately
+    const yAllKm = corridorNodes.map(n => n.km);
+    const yKmMin = d3.min(yAllKm);
+    const yKmMax = d3.max(yAllKm);
+    const yPad = (yKmMax - yKmMin) * 0.05;
+    yScale.domain([yKmMax + yPad, yKmMin - yPad]).range([0, innerH]);
+
+    // Set X scale to full day (or filtered range) so time labels appear immediately
+    const xMin = STATE.timeFilterStart !== null ? STATE.timeFilterStart : 0;
+    const xMax = STATE.timeFilterEnd   !== null ? STATE.timeFilterEnd   : 1440;
+    xScale.domain([xMin, xMax]).range([0, innerW]);
+
     updateYAxis(corridorNodes, corridorPositions, yScale, yAxisG, yGridG, innerW);
     const zt0 = d3.zoomTransform(chartState.svg.node());
     const rx0 = zt0.rescaleX(xScale);
-    xAxisG.call(d3.axisBottom(rx0).tickFormat(''));
-    xGridG.call(d3.axisBottom(rx0).tickSize(-innerH).tickSizeOuter(0).tickFormat(''));
+    const tickCount = Math.max(2, Math.floor(innerW / (80 * zt0.k)));
+    xAxisG.call(d3.axisBottom(rx0).tickFormat(d => formatTimeHHMM(d)).ticks(tickCount));
+    xGridG.call(d3.axisBottom(rx0).tickSize(-innerH).tickSizeOuter(0).tickFormat('').ticks(tickCount));
     xGridG.select('.domain').remove();
     updateLegend();
     return;
@@ -1573,7 +1586,7 @@ function updateChart() {
         .datum(points)
         .attr('d', lineGen)
         .attr('class', 'service-hitarea')
-        .on('click', () => selectService(plan.id, svcIdx));
+        .on('click', (event) => { event.stopPropagation(); selectService(plan.id, svcIdx); });
 
       // Visible path (with unique class for update targeting)
       const pathClass = `path-${plan.id.replace(/[^a-zA-Z0-9]/g, '')}-${svcIdx}`;
@@ -1597,7 +1610,7 @@ function updateChart() {
             STATE.selectedService.serviceIndex === svcIdx) return;
           d3.select(this).attr('stroke-width', 1.8).attr('opacity', 0.75);
         })
-        .on('click', () => selectService(plan.id, svcIdx));
+        .on('click', (event) => { event.stopPropagation(); selectService(plan.id, svcIdx); });
     });
   });
 
@@ -2090,6 +2103,15 @@ document.addEventListener('keydown', (e) => {
     updateChart();
     closeModal('modal-add-plan');
     closeModal('modal-edit-plans');
+  }
+});
+
+// Deselect service when clicking empty chart area
+document.getElementById('chart-panel').addEventListener('click', () => {
+  if (STATE.selectedService) {
+    STATE.selectedService = null;
+    hideDetailPanel();
+    updateChart();
   }
 });
 
