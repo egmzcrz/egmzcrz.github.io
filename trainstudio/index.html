@@ -1892,9 +1892,10 @@ function updateLegend() {
   const legend = document.getElementById('chart-legend');
   const visiblePlans = STATE.servicePlans.filter(p => p.visible);
   if (visiblePlans.length === 0) {
-    legend.innerHTML = '';
+    legend.style.display = 'none';
     return;
   }
+  legend.style.display = '';
   legend.innerHTML = visiblePlans.map(p => `
 <div class="legend-item">
 <div class="legend-swatch" style="background:${p.color};"></div>
