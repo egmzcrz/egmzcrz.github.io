@@ -280,22 +280,9 @@ function renderServicePaths(drawG, corridorNodes, corridorPositions, xScale, ySc
         .x(d => xScale(d[0]))
         .y(d => yScale(d[1]));
 
-      // Store metadata for drag updates
-      chartState._serviceData.push({
-        plan, svc, svcIdx, points, isSelected, lineGen,
-        planId: plan.id, serviceKey: plan.serviceKey
-      });
-
-      // Invisible wide hit area for easier clicking
-      hitareaLayer.append('path')
-        .datum(points)
-        .attr('d', lineGen)
-        .attr('class', 'service-hitarea')
-        .on('click', (event) => { event.stopPropagation(); selectService(plan.id, svcIdx); });
-
-      // Visible service path
+      // Visible service path (create first to cache reference)
       const pathClass = `path-${plan.id.replace(/[^a-zA-Z0-9]/g, '')}-${svcIdx}`;
-      plansLayer.append('path')
+      const pathEl = plansLayer.append('path')
         .datum(points)
         .attr('d', lineGen)
         .attr('class', `service-path ${pathClass}${isSelected ? ' selected' : ''}`)
@@ -315,6 +302,20 @@ function renderServicePaths(drawG, corridorNodes, corridorPositions, xScale, ySc
             STATE.selectedService.serviceIndex === svcIdx) return;
           d3.select(this).attr('stroke-width', 1.8).attr('opacity', 0.75);
         })
+        .on('click', (event) => { event.stopPropagation(); selectService(plan.id, svcIdx); });
+
+      // Store metadata for drag updates (include cached path element ref)
+      chartState._serviceData.push({
+        plan, svc, svcIdx, points, isSelected, lineGen,
+        planId: plan.id, serviceKey: plan.serviceKey,
+        pathEl
+      });
+
+      // Invisible wide hit area for easier clicking
+      hitareaLayer.append('path')
+        .datum(points)
+        .attr('d', lineGen)
+        .attr('class', 'service-hitarea')
         .on('click', (event) => { event.stopPropagation(); selectService(plan.id, svcIdx); });
     });
   });
@@ -445,29 +446,35 @@ function renderDraggableNodes(nodesLayer, selData, corridorNodes, corridorPositi
       const newTime = xScale.invert(newX);
       const constrained = constrainTime(svc, d.stationIdx, d.isArrival, newTime, plan.serviceKey);
 
-      // Update data model (forward propagation)
-      applyTimeDelta(svc, d.stationIdx, d.isArrival, constrained, plan.serviceKey);
+      // Update data model (forward propagation — raw delta, no constraint check during drag)
+      applyTimeRaw(svc, d.stationIdx, d.isArrival, constrained);
 
       // Update ALL node positions smoothly
       updateAllNodePositions(nodesLayer, svc, corridorPositions, plan.serviceKey, xScale, yScale);
 
-      // Update the service path
-      updateServicePath(svc, plan, svcIdx, corridorNodes, corridorPositions, xScale, yScale);
+      // Update the service path (uses cached path ref from _serviceData)
+      const pathRef = chartState._serviceData.find(sd =>
+        sd.planId === plan.id && sd.svcIdx === svcIdx
+      );
+      if (pathRef && pathRef.pathEl) {
+        const pts = buildServicePoints(svc, corridorNodes, corridorPositions);
+        pathRef.pathEl.attr('d', pathRef.lineGen(pts));
+      }
 
       // Update tooltip
       const tooltip = DOM.get('chart-tooltip');
       const eventType = d.isArrival ? 'Arr' : 'Dep';
       const newVal = d.isArrival ? svc.times[d.stationIdx].arr : svc.times[d.stationIdx].dep;
       tooltip.innerHTML = `<b>${d.node}</b> ${eventType}: ${formatTimeHHMM(newVal)}`;
-
-      // Update detail panel (manual, not through StateManager since drag is batched)
-      updateDetailPanel();
     })
     .on('end', function() {
       const t = d3.zoomTransform(chartState.svg.node());
       d3.select(this).attr('r', 5 / t.k);
       chartState._dragInfo = null;
+      // Enforce constraints after drag completes
       enforceConstraints(svc, plan.serviceKey);
+      // Update detail panel only once at the end
+      updateDetailPanel();
       StateManager.endTimeEdit();
     })
   );
@@ -486,6 +493,25 @@ function updateAllNodePositions(nodesLayer, svc, corridorPositions, serviceKey, 
       .attr('cx', xScale(t))
       .attr('cy', yScale(km));
   });
+}
+
+// Apply a raw time delta (no constraint enforcement — used during drag for speed).
+// Constraints are enforced once on drag end.
+function applyTimeRaw(svc, stationIdx, isArrival, newTime) {
+  const oldVal = isArrival ? svc.times[stationIdx].arr : svc.times[stationIdx].dep;
+  const delta = newTime - oldVal;
+  if (Math.abs(delta) < 0.0001) return;
+
+  // Forward propagate: this node's departure onward shifts by delta
+  for (let i = stationIdx; i < svc.times.length; i++) {
+    if (i === stationIdx && isArrival) {
+      svc.times[i].arr += delta;
+    }
+    svc.times[i].dep += delta;
+    if (i + 1 < svc.times.length) {
+      svc.times[i + 1].arr += delta;
+    }
+  }
 }
 
 // Smoothly update the service path during drag
