@@ -1471,6 +1471,9 @@ function updateChart() {
 
   const { drawG, yGridG, xGridG, xAxisG, yAxisG, xScale, yScale, innerW, innerH, m, svg } = chartState;
 
+  // Hide tooltip (may be stuck from removed elements)
+  document.getElementById('chart-tooltip').style.opacity = '0';
+
   // Clear previous draws
   drawG.selectAll('.single-track-layer').remove();
   drawG.selectAll('.service-layer').remove();
