@@ -113,6 +113,8 @@ function processFile(file) {
       DOM.get('btn-add-plan').disabled = false;
       DOM.get('btn-edit-plans').disabled = false;
       DOM.get('btn-download').disabled = false;
+      DOM.get('btn-fit').disabled = false;
+      DOM.get('btn-fit').style.opacity = '1';
 
       populateCorridorSelect();
       populateAddPlanModal();

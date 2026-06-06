@@ -129,18 +129,7 @@ function onTimeEdit(planId, serviceIndex, stationIdx, type, valueStr) {
   }
 
   StateManager.beginTimeEdit();
-
-  // Forward propagate
-  for (let i = stationIdx; i < svc.times.length; i++) {
-    if (i === stationIdx) {
-      svc.times[i][type] += delta;
-      if (isArrival) svc.times[i].dep += delta;
-    } else {
-      svc.times[i].arr += delta;
-      svc.times[i].dep += delta;
-    }
-  }
-
+  propagateTimeDelta(svc, stationIdx, isArrival, delta);
   enforceConstraints(svc, plan.serviceKey);
   StateManager.endTimeEdit();
 }

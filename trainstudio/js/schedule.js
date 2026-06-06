@@ -85,7 +85,30 @@ function constrainTime(svc, stationIdx, isArrival, newTimeMin, serviceKey) {
 }
 
 /**
- * Apply a time delta to a service node, forward-propagating to all later stations.
+ * Forward-propagate a time delta through a service: the edited event and every
+ * later event shift by `delta`. Editing an arrival also moves its own departure
+ * (and onward); editing a departure leaves its own arrival fixed (changing the
+ * dwell) and shifts everything after. Does NOT enforce constraints.
+ *
+ * @param {Object} svc — Service with `times` array.
+ * @param {number} stationIdx — Index of the edited station.
+ * @param {boolean} isArrival — True if the arrival was edited.
+ * @param {number} delta — Minutes to shift by (may be negative).
+ */
+function propagateTimeDelta(svc, stationIdx, isArrival, delta) {
+  if (Math.abs(delta) < 0.0001) return;
+  const times = svc.times;
+
+  if (isArrival) times[stationIdx].arr += delta;
+  times[stationIdx].dep += delta;
+  for (let i = stationIdx + 1; i < times.length; i++) {
+    times[i].arr += delta;
+    times[i].dep += delta;
+  }
+}
+
+/**
+ * Apply a time edit to a service node and enforce constraints afterward.
  * Does NOT push undo — callers should use StateManager.beginTimeEdit/endTimeEdit.
  *
  * @param {Object} svc — Service with `times` array.
@@ -96,20 +119,7 @@ function constrainTime(svc, stationIdx, isArrival, newTimeMin, serviceKey) {
  */
 function applyTimeDelta(svc, stationIdx, isArrival, newTime, serviceKey) {
   const oldVal = isArrival ? svc.times[stationIdx].arr : svc.times[stationIdx].dep;
-  const delta = newTime - oldVal;
-  if (Math.abs(delta) < 0.0001) return;
-
-  // Forward propagate: this node's departure onward shifts by delta
-  for (let i = stationIdx; i < svc.times.length; i++) {
-    if (i === stationIdx && isArrival) {
-      svc.times[i].arr += delta;
-    }
-    svc.times[i].dep += delta;
-    if (i + 1 < svc.times.length) {
-      svc.times[i + 1].arr += delta;
-    }
-  }
-
+  propagateTimeDelta(svc, stationIdx, isArrival, newTime - oldVal);
   enforceConstraints(svc, serviceKey);
 }
 

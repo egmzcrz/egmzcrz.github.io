@@ -631,9 +631,13 @@
     stroke-width: 1.8;
     stroke-linejoin: round;
     stroke-linecap: round;
+    opacity: 0.78;
+    cursor: pointer;
+    transition: stroke-width 80ms ease, opacity 80ms ease;
     }
-    .service-path:hover { stroke-width: 3 !important; }
-    .service-path.selected { stroke-width: 3.2; }
+    .service-path:hover { stroke-width: 3; opacity: 1; }
+    .service-path.selected { stroke-width: 3.2; opacity: 1; cursor: ew-resize; }
+    .service-path.selected:hover { stroke-width: 3.2; }
 
     .service-hitarea {
     fill: none;
@@ -641,11 +645,14 @@
     stroke-width: 14;
     cursor: pointer;
     }
+    .service-hitarea.selected { cursor: ew-resize; }
 
     .node-dot {
     cursor: ew-resize;
+    stroke: #fff;
+    stroke-width: 1.5;
     }
-    .node-dot:hover { r: 6 !important; }
+    .node-dot:hover { r: 6.5; }
 
     /* Scrollbar styling */
     ::-webkit-scrollbar { width: 6px; }

@@ -64,14 +64,16 @@ window.addEventListener('resize', () => {
   clearTimeout(resizeTimeout);
   resizeTimeout = setTimeout(() => {
     if (STATE.services && Object.keys(STATE.services).length > 0) {
-      initChart();
+      initChart(true);   // preserve the current zoom/pan across resize
+      updateChart();
     }
   }, 250);
 });
 
-// ---- Undo/Redo buttons ----
+// ---- Undo/Redo/Fit buttons ----
 DOM.get('btn-undo').addEventListener('click', undo);
 DOM.get('btn-redo').addEventListener('click', redo);
+DOM.get('btn-fit').addEventListener('click', fitToView);
 
 // ---- Keyboard Shortcuts ----
 document.addEventListener('keydown', (e) => {
@@ -93,23 +95,29 @@ document.addEventListener('keydown', (e) => {
     closeModal('modal-edit-plans');
     return;
   }
+  // Don't hijack keys while the user is typing in an input/textarea/select
+  const target = e.target;
+  const isEditable = target && (
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT' ||
+    target.isContentEditable
+  );
+  if (isEditable) return;
+
   // Backspace / Delete = delete the currently selected service
   if (e.key === 'Backspace' || e.key === 'Delete') {
-    // Don't hijack the key while the user is typing in an input/textarea
-    const target = e.target;
-    const isEditable = target && (
-      target.tagName === 'INPUT' ||
-      target.tagName === 'TEXTAREA' ||
-      target.tagName === 'SELECT' ||
-      target.isContentEditable
-    );
-    if (isEditable) return;
-
     if (STATE.selectedService) {
       e.preventDefault();
       const { planId, serviceIndex } = STATE.selectedService;
       deleteService(planId, serviceIndex);
     }
+    return;
+  }
+  // F = fit chart to view
+  if (e.key === 'f' || e.key === 'F') {
+    e.preventDefault();
+    fitToView();
   }
 });
 

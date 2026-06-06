@@ -1,11 +1,65 @@
 // =============================================================
-// D3.js CHART — Rendering engine
+// D3.js CHART — Rendering engine (Marey / string-line diagram)
+//
+// Zoom model: SEMANTIC zoom on the TIME axis only. The vertical
+// (distance/station) axis is fixed so station spacing and labels
+// never distort. On zoom we rescale the X scale and redraw geometry
+// rather than applying an SVG transform, which keeps strokes crisp
+// and decouples time-zoom from distance.
 // =============================================================
 
+// ---- Helpers ----
+
+/** Stable key for a service within a plan (used for D3 data-joins). */
+function serviceKey(planId, svcIdx) {
+  return `${planId}::${svcIdx}`;
+}
+
+/** Whether a given plan/service is the currently selected one. */
+function isServiceSelected(planId, svcIdx) {
+  return !!STATE.selectedService &&
+    STATE.selectedService.planId === planId &&
+    STATE.selectedService.serviceIndex === svcIdx;
+}
+
+/** Build a line generator bound to the current x (time) and y (distance) scales. */
+function buildLineGen(rx, yScale) {
+  return d3.line().x(p => rx(p[0])).y(p => yScale(p[1]));
+}
+
+/** Format a duration in minutes as "Mm SSs" (used in the shift tooltip). */
+function formatDuration(min) {
+  const totalSec = Math.round(min * 60);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}m ${String(s).padStart(2, '0')}s`;
+}
+
+/** Format minutes-from-midnight as HH:MM for axis ticks (hours may exceed 23). */
+function formatAxisTime(minutes) {
+  const m = Math.round(minutes);
+  const h = Math.floor(m / 60);
+  const mm = ((m % 60) + 60) % 60;
+  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+/** Position the shared tooltip relative to the chart panel from a DOM event. */
+function positionTooltip(tooltip, clientX, clientY) {
+  const rect = DOM.get('chart-panel').getBoundingClientRect();
+  tooltip.style.left = (clientX - rect.left + 14) + 'px';
+  tooltip.style.top = (clientY - rect.top - 30) + 'px';
+}
+
 // ---- Chart Initialization ----
-function initChart() {
+function initChart(preserveTransform) {
   const panel = DOM.get('chart-panel');
   const svg = d3.select('#chart-svg');
+
+  // Capture the current zoom transform so a resize doesn't reset the view.
+  let prevTransform = null;
+  if (preserveTransform && chartState.svg) {
+    prevTransform = d3.zoomTransform(chartState.svg.node());
+  }
 
   svg.selectAll('*').remove();
 
@@ -23,82 +77,63 @@ function initChart() {
 
   svg.attr('width', width).attr('height', height);
 
-  // Background rect
+  // Background
   svg.append('rect')
     .attr('width', '100%')
     .attr('height', '100%')
     .attr('fill', '#fafbfc');
 
-  // ---- Fixed chart group (margin offset only) ----
+  // Chart group (margin offset)
   const chartG = svg.append('g')
-  .attr('transform', `translate(${m.left},${m.top})`);
+    .attr('transform', `translate(${m.left},${m.top})`);
 
-  // ---- Clip path (defined on chartG, covers the plot area) ----
+  // Clip path covering the plot area
   chartG.append('defs').append('clipPath')
     .attr('id', 'chart-clip')
     .append('rect')
-    .attr('x', 0)
-    .attr('y', 0)
-    .attr('width', innerW)
-    .attr('height', innerH);
+    .attr('x', 0).attr('y', 0)
+    .attr('width', innerW).attr('height', innerH);
 
-  // ---- Zoomable group (contains everything that pans/zooms) ----
-  const zoomG = chartG.append('g').attr('class', 'zoom-group');
-
-  // Y-axis grid lines (drawn first = behind data)
-  const yGridG = zoomG.append('g').attr('class', 'y-grid-layer');
-
-  // Data layer (clipped, drawn on top of grid)
-  const drawG = zoomG.append('g')
-  .attr('clip-path', 'url(#chart-clip)');
-
-  // Y-axis (inside zoomG to pan vertically with the data)
-  const yAxisG = zoomG.append('g').attr('class', 'axis axis-y');
-
-  // ---- Fixed layers (outside zoomG, always visible) ----
-  // X-axis grid lines (fixed, outside zoomG — but clipped to plot area)
+  // ---- Layers (back to front) ----
+  // Single-track bands: span full width, vertical only — fixed across zoom.
+  const stLayer = chartG.append('g')
+    .attr('class', 'single-track-layer')
+    .attr('clip-path', 'url(#chart-clip)');
+  // Horizontal station grid: fixed.
+  const yGridG = chartG.append('g').attr('class', 'y-grid-layer');
+  // Vertical time grid: redrawn on zoom.
   const xGridG = chartG.append('g')
-  .attr('class', 'x-grid-layer')
-  .attr('clip-path', 'url(#chart-clip)');
-
-  // X-axis (fixed at bottom)
+    .attr('class', 'x-grid-layer')
+    .attr('clip-path', 'url(#chart-clip)');
+  // Data layer: hit areas, service paths, draggable nodes — redrawn on zoom.
+  const drawG = chartG.append('g').attr('clip-path', 'url(#chart-clip)');
+  // Axes (fixed): station labels on the left, time labels at the bottom.
+  const yAxisG = chartG.append('g').attr('class', 'axis axis-y');
   const xAxisG = chartG.append('g').attr('class', 'axis axis-x')
-  .attr('transform', `translate(0,${innerH})`);
+    .attr('transform', `translate(0,${innerH})`);
 
   // Scales
   const xScale = d3.scaleLinear().range([0, innerW]);
   const yScale = d3.scaleLinear().range([innerH, 0]);
 
-  // ---- Zoom behavior ----
+  // ---- Zoom behavior (semantic, time-axis only) ----
   const zoom = d3.zoom()
-  .scaleExtent([0.3, 25])
-  .extent([[0, 0], [innerW, innerH]])
-  .on('zoom', (event) => {
-    const t = event.transform;
-    const k = t.k;
-    const ik = 1 / k;  // inverse scale
+    .scaleExtent([0.3, 50])
+    .on('zoom', (event) => {
+      chartState.transform = event.transform;
+      chartState.rx = event.transform.rescaleX(xScale);
+      redrawTimeAxis(chartState.rx);
+      renderXAxis(xAxisG, xGridG, chartState.rx, innerW, innerH);
+    });
 
-    // Transform the zoomable group (data + Y axis + Y grid all move together)
-    zoomG.attr('transform', t);
-
-    // Scale stroke-widths and node radii inversely so they stay sharp
-    zoomG.selectAll('.service-path').style('stroke-width', (1.8 * ik) + 'px');
-    zoomG.selectAll('.service-path.selected').style('stroke-width', (3.2 * ik) + 'px');
-    zoomG.selectAll('.service-hitarea').style('stroke-width', (14 * ik) + 'px');
-    zoomG.selectAll('.node-dot')
-      .attr('r', 5 * ik)
-      .style('stroke-width', (1.5 * ik) + 'px');
-
-    // Redraw X-axis with rescaled domain (shared renderer)
-    renderXAxis(xAxisG, xGridG, xScale, innerW, innerH);
-  });
-
-  svg.call(zoom);
+  svg.call(zoom)
+    .on('dblclick.zoom', null);          // replace default dblclick-zoom...
+  svg.on('dblclick', fitToView);         // ...with fit-to-view
 
   // Store references
   chartState.svg = svg;
   chartState.chartG = chartG;
-  chartState.zoomG = zoomG;
+  chartState.stLayer = stLayer;
   chartState.drawG = drawG;
   chartState.yGridG = yGridG;
   chartState.xGridG = xGridG;
@@ -110,6 +145,20 @@ function initChart() {
   chartState.innerW = innerW;
   chartState.innerH = innerH;
   chartState.m = m;
+  chartState.transform = d3.zoomIdentity;
+  chartState.rx = xScale;
+
+  // Re-apply the preserved transform (clamped by the new extent).
+  if (prevTransform) {
+    svg.call(zoom.transform, prevTransform);
+  }
+}
+
+/** Reset the view to fit all data (identity zoom over the data extent). */
+function fitToView() {
+  if (!chartState.svg || !chartState.zoom) return;
+  chartState.svg.transition().duration(300)
+    .call(chartState.zoom.transform, d3.zoomIdentity);
 }
 
 // =============================================================
@@ -125,64 +174,54 @@ function updateChart() {
   // Lazy init
   if (!chartState.svg) initChart();
 
-  const { drawG, yGridG, xGridG, xAxisG, yAxisG, xScale, yScale, innerW, innerH } = chartState;
+  const { yGridG, yAxisG, xAxisG, xGridG, xScale, yScale, innerW, innerH } = chartState;
+
+  // Cache corridor geometry for drag / zoom redraws.
+  chartState.corridorNodes = corridorNodes;
+  chartState.corridorPositions = corridorPositions;
 
   // Hide tooltip (may be stuck from removed elements)
   DOM.get('chart-tooltip').style.opacity = '0';
 
-  // Clear previous draws
-  clearChartLayers(drawG, yGridG);
-
-  // Compute visible services
   const allVisibleServices = STATE.servicePlans
     .filter(p => p.visible)
     .flatMap(p => p.services);
 
-  // ---- Empty state: no services yet ----
-  if (allVisibleServices.length === 0) {
-    renderEmptyChart(corridorNodes, corridorPositions,
-      yScale, yAxisG, yGridG, xScale, xAxisG, xGridG, innerW, innerH);
-    updateLegend();
-    return;
-  }
-
-  // ---- Compute time range ----
-  const allTimes = allVisibleServices.flatMap(s => s.times.flatMap(t => [t.arr, t.dep]));
-  let tMin = d3.min(allTimes) - 10;
-  let tMax = d3.max(allTimes) + 10;
-  if (STATE.timeFilterStart !== null) tMin = STATE.timeFilterStart;
-  if (STATE.timeFilterEnd   !== null) tMax = STATE.timeFilterEnd;
-  if (tMax <= tMin) tMax = tMin + 60;
-
-  // ---- Set scales ----
-  setupXScaleDomain(xScale, innerW, tMin, tMax);
+  // ---- Y (distance) domain — always set, fixed ----
   setupYScaleDomain(corridorNodes, yScale, innerH);
 
-  // ---- Render layers (back to front) ----
-  renderSingleTrackLayer(drawG, corridorData.singleTrackSegments, xScale, yScale, tMin, tMax);
+  // ---- X (time) domain ----
+  let tMin, tMax;
+  if (allVisibleServices.length === 0) {
+    tMin = STATE.timeFilterStart !== null ? STATE.timeFilterStart : 0;
+    tMax = STATE.timeFilterEnd   !== null ? STATE.timeFilterEnd   : 1440;
+  } else {
+    const allTimes = allVisibleServices.flatMap(s => s.times.flatMap(t => [t.arr, t.dep]));
+    tMin = Math.max(0, d3.min(allTimes) - 10);  // never show negative time
+    tMax = d3.max(allTimes) + 10;
+    if (STATE.timeFilterStart !== null) tMin = STATE.timeFilterStart;
+    if (STATE.timeFilterEnd   !== null) tMax = STATE.timeFilterEnd;
+  }
+  if (tMax <= tMin) tMax = tMin + 60;
+  setupXScaleDomain(xScale, innerW, tMin, tMax);
+
+  // Current zoomed x-scale (preserves the live zoom transform).
+  chartState.rx = (chartState.transform || d3.zoomIdentity).rescaleX(xScale);
+  const rx = chartState.rx;
+
+  // ---- Render layers ----
   updateYAxis(corridorNodes, corridorPositions, yScale, yAxisG, yGridG, innerW);
-  renderServicePaths(drawG, corridorNodes, corridorPositions, xScale, yScale);
-  renderSelectedServiceNodes(drawG, corridorNodes, corridorPositions, xScale, yScale);
-  renderXAxis(xAxisG, xGridG, xScale, innerW, innerH);
+  renderSingleTrackLayer(corridorData.singleTrackSegments, yScale, innerW);
+  renderServicePaths(corridorNodes, corridorPositions, rx, yScale);
+  renderSelectedServiceNodes(corridorNodes, corridorPositions, rx, yScale);
+  renderXAxis(xAxisG, xGridG, rx, innerW, innerH);
 
-  // ---- Finalize ----
   updateLegend();
-  highlightSelectedService();
-  applyZoomScale();
 }
 
 // =============================================================
-// EXTRACTED RENDER FUNCTIONS
+// RENDER FUNCTIONS
 // =============================================================
-
-/** Clear all data-dependent SVG layers. */
-function clearChartLayers(drawG, yGridG) {
-  drawG.selectAll('.single-track-layer').remove();
-  drawG.selectAll('.service-layer').remove();
-  drawG.selectAll('.node-layer').remove();
-  drawG.selectAll('.hitarea-layer').remove();
-  yGridG.selectAll('*').remove();
-}
 
 /** Set Y scale domain from corridor station km values. */
 function setupYScaleDomain(corridorNodes, yScale, innerH) {
@@ -198,16 +237,14 @@ function setupXScaleDomain(xScale, innerW, tMin, tMax) {
   xScale.domain([tMin, tMax]).range([0, innerW]);
 }
 
-/** Render X-axis labels and grid (uses current zoom transform). */
-function renderXAxis(xAxisG, xGridG, xScale, innerW, innerH) {
-  if (!chartState.svg) return;
-  const zt = d3.zoomTransform(chartState.svg.node());
-  const rx = zt.rescaleX(xScale);
-  const tickCount = Math.max(2, Math.floor(innerW / (80 * zt.k)));
+/** Render X-axis labels and grid for the given (zoomed) time scale. */
+function renderXAxis(xAxisG, xGridG, rx, innerW, innerH) {
+  const k = (chartState.transform || d3.zoomIdentity).k;
+  const tickCount = Math.max(2, Math.floor(innerW / (80 * k)));
 
   xAxisG.call(
     d3.axisBottom(rx)
-      .tickFormat(d => formatTimeHHMM(d))
+      .tickFormat(d => formatAxisTime(d))
       .ticks(tickCount)
   );
 
@@ -221,139 +258,23 @@ function renderXAxis(xAxisG, xGridG, xScale, innerW, innerH) {
   xGridG.select('.domain').remove();
 }
 
-/** Render empty chart with axis lines but no service data. */
-function renderEmptyChart(corridorNodes, corridorPositions,
-    yScale, yAxisG, yGridG, xScale, xAxisG, xGridG, innerW, innerH) {
-  setupYScaleDomain(corridorNodes, yScale, innerH);
-
-  const xMin = STATE.timeFilterStart !== null ? STATE.timeFilterStart : 0;
-  const xMax = STATE.timeFilterEnd   !== null ? STATE.timeFilterEnd   : 1440;
-  setupXScaleDomain(xScale, innerW, xMin, xMax);
-
-  updateYAxis(corridorNodes, corridorPositions, yScale, yAxisG, yGridG, innerW);
-  renderXAxis(xAxisG, xGridG, xScale, innerW, innerH);
-}
-
-/** Draw single-track segments as red dashed bands. */
-function renderSingleTrackLayer(drawG, stSegs, xScale, yScale, tMin, tMax) {
-  if (!stSegs || stSegs.length === 0) return;
-
-  const stLayer = drawG.append('g').attr('class', 'single-track-layer');
-  const xFull = xScale(tMax) - xScale(tMin);
-
-  stSegs.forEach(seg => {
-    const y1 = yScale(seg.fromKm);
-    const y2 = yScale(seg.toKm);
-    const yTop = Math.min(y1, y2);
-    const yH = Math.abs(y2 - y1);
-
-    stLayer.append('rect')
-      .attr('x', xScale(tMin))
-      .attr('y', yTop)
-      .attr('width', xFull)
-      .attr('height', Math.max(yH, 1))
-      .attr('fill', 'rgba(239, 68, 68, 0.10)')
-      .attr('stroke', 'rgba(239, 68, 68, 0.22)')
-      .attr('stroke-width', 0.5)
-      .attr('stroke-dasharray', '6 4');
-  });
-}
-
-/** Draw visible service polylines and invisible hit areas. */
-function renderServicePaths(drawG, corridorNodes, corridorPositions, xScale, yScale) {
-  const plansLayer = drawG.append('g').attr('class', 'service-layer');
-  const hitareaLayer = drawG.append('g').attr('class', 'hitarea-layer');
-
-  if (!chartState._serviceData) chartState._serviceData = [];
-  chartState._serviceData = [];
-
-  STATE.servicePlans.filter(p => p.visible).forEach(plan => {
-    plan.services.forEach((svc, svcIdx) => {
-      const points = buildServicePoints(svc, corridorNodes, corridorPositions);
-      if (points.length < 2) return;
-
-      const isSelected = STATE.selectedService &&
-        STATE.selectedService.planId === plan.id &&
-        STATE.selectedService.serviceIndex === svcIdx;
-
-      const lineGen = d3.line()
-        .x(d => xScale(d[0]))
-        .y(d => yScale(d[1]));
-
-      // Visible service path (create first to cache reference)
-      const pathClass = `path-${plan.id.replace(/[^a-zA-Z0-9]/g, '')}-${svcIdx}`;
-      const pathEl = plansLayer.append('path')
-        .datum(points)
-        .attr('d', lineGen)
-        .attr('class', `service-path ${pathClass}${isSelected ? ' selected' : ''}`)
-        .attr('stroke', plan.color)
-        .attr('opacity', isSelected ? 1 : 0.75)
-        .attr('data-plan-id', plan.id)
-        .attr('data-svc-idx', svcIdx)
-        .on('mouseover', function(event) {
-          if (STATE.selectedService &&
-            STATE.selectedService.planId === plan.id &&
-            STATE.selectedService.serviceIndex === svcIdx) return;
-          d3.select(this).attr('stroke-width', 3).attr('opacity', 1);
-        })
-        .on('mouseout', function() {
-          if (STATE.selectedService &&
-            STATE.selectedService.planId === plan.id &&
-            STATE.selectedService.serviceIndex === svcIdx) return;
-          d3.select(this).attr('stroke-width', 1.8).attr('opacity', 0.75);
-        })
-        .on('click', (event) => { event.stopPropagation(); selectService(plan.id, svcIdx); });
-
-      // Store metadata for drag updates (include cached path element ref)
-      chartState._serviceData.push({
-        plan, svc, svcIdx, points, isSelected, lineGen,
-        planId: plan.id, serviceKey: plan.serviceKey,
-        pathEl
-      });
-
-      // Invisible wide hit area for easier clicking
-      hitareaLayer.append('path')
-        .datum(points)
-        .attr('d', lineGen)
-        .attr('class', 'service-hitarea')
-        .on('click', (event) => { event.stopPropagation(); selectService(plan.id, svcIdx); });
-    });
-  });
-}
-
-/** Draw draggable nodes for the currently selected service only. */
-function renderSelectedServiceNodes(drawG, corridorNodes, corridorPositions, xScale, yScale) {
-  if (!STATE.selectedService) return;
-
-  const selData = chartState._serviceData.find(d =>
-    d.planId === STATE.selectedService.planId &&
-    d.svcIdx === STATE.selectedService.serviceIndex
-  );
-  if (!selData) return;
-
-  const nodesLayer = drawG.append('g').attr('class', 'node-layer');
-  renderDraggableNodes(nodesLayer, selData, corridorNodes, corridorPositions, xScale, yScale);
-}
-
-// =============================================================
-// ZOOM & AXIS HELPERS
-// =============================================================
-
-function applyZoomScale() {
-  if (!chartState.svg) return;
-  const t = d3.zoomTransform(chartState.svg.node());
-  if (t.k === 1 && t.x === 0 && t.y === 0) return; // identity, nothing to do
-  const ik = 1 / t.k;
-  chartState.zoomG.selectAll('.service-path').style('stroke-width', (1.8 * ik) + 'px');
-  chartState.zoomG.selectAll('.service-path.selected').style('stroke-width', (3.2 * ik) + 'px');
-  chartState.zoomG.selectAll('.service-hitarea').style('stroke-width', (14 * ik) + 'px');
-  chartState.zoomG.selectAll('.node-dot')
-    .attr('r', 5 * ik)
-    .style('stroke-width', (1.5 * ik) + 'px');
+/** Draw single-track segments as full-width red dashed bands (fixed across zoom). */
+function renderSingleTrackLayer(stSegs, yScale, innerW) {
+  const segs = stSegs || [];
+  chartState.stLayer.selectAll('rect')
+    .data(segs)
+    .join('rect')
+    .attr('x', 0)
+    .attr('width', innerW)
+    .attr('y', d => Math.min(yScale(d.fromKm), yScale(d.toKm)))
+    .attr('height', d => Math.max(Math.abs(yScale(d.toKm) - yScale(d.fromKm)), 1))
+    .attr('fill', 'rgba(239, 68, 68, 0.10)')
+    .attr('stroke', 'rgba(239, 68, 68, 0.22)')
+    .attr('stroke-width', 0.5)
+    .attr('stroke-dasharray', '6 4');
 }
 
 function updateYAxis(corridorNodes, corridorPositions, yScale, yAxisG, yGridG, innerW) {
-  // Y axis with station labels (drawn inside yAxisG, which is in zoomG)
   yAxisG.call(d3.axisLeft(yScale)
     .tickValues(corridorNodes.map(n => n.km))
     .tickFormat(d => {
@@ -362,7 +283,6 @@ function updateYAxis(corridorNodes, corridorPositions, yScale, yAxisG, yGridG, i
     })
   );
 
-  // Horizontal grid lines (drawn in yGridG, inside zoomG)
   yGridG.selectAll('line')
     .data(corridorNodes)
     .join('line')
@@ -375,154 +295,276 @@ function updateYAxis(corridorNodes, corridorPositions, yScale, yAxisG, yGridG, i
     .attr('stroke-dasharray', '3 5');
 }
 
-// =============================================================
-// SERVICE PATH & NODE GEOMETRY
-// =============================================================
-
-// Build polyline points for a service — only at stations that belong to the corridor
+/** Build polyline points for a service — only at stations on this corridor. */
 function buildServicePoints(svc, corridorNodes, corridorPositions) {
   const points = [];
-  svc.times.forEach((t, idx) => {
+  svc.times.forEach(t => {
     const km = corridorPositions[t.node];
     if (km === undefined) return; // station not in this corridor — skip
-    points.push({ t: t.arr, km, node: t.node, stationIdx: idx, isArrival: true });
-    points.push({ t: t.dep, km, node: t.node, stationIdx: idx, isArrival: false });
+    points.push([t.arr, km]);
+    points.push([t.dep, km]);
   });
-  return points.map(p => [p.t, p.km]);
+  return points;
 }
 
-// Render draggable nodes for a selected service (with smooth updates)
-function renderDraggableNodes(nodesLayer, selData, corridorNodes, corridorPositions, xScale, yScale) {
-  const { plan, svc, svcIdx, points } = selData;
+/**
+ * Draw visible service polylines and invisible hit areas via D3 data-joins
+ * (no clear-and-rebuild — elements are reused across renders).
+ */
+function renderServicePaths(corridorNodes, corridorPositions, rx, yScale) {
+  const drawG = chartState.drawG;
 
-  // Rebuild point metadata (only corridor stations)
-  const pointMeta = [];
-  svc.times.forEach((t, idx) => {
-    const km = corridorPositions[t.node];
-    if (km === undefined) return; // not in corridor
-    pointMeta.push({ t: t.arr, km, node: t.node, stationIdx: idx, isArrival: true });
-    pointMeta.push({ t: t.dep, km, node: t.node, stationIdx: idx, isArrival: false });
+  let hitareaLayer = drawG.select('g.hitarea-layer');
+  if (hitareaLayer.empty()) hitareaLayer = drawG.append('g').attr('class', 'hitarea-layer');
+  let plansLayer = drawG.select('g.service-layer');
+  if (plansLayer.empty()) plansLayer = drawG.append('g').attr('class', 'service-layer');
+
+  chartState.hitareaLayer = hitareaLayer;
+  chartState.plansLayer = plansLayer;
+
+  const lineGen = buildLineGen(rx, yScale);
+
+  // Build the bound dataset (skip services with <2 corridor points).
+  const data = [];
+  STATE.servicePlans.filter(p => p.visible).forEach(plan => {
+    plan.services.forEach((svc, svcIdx) => {
+      const points = buildServicePoints(svc, corridorNodes, corridorPositions);
+      if (points.length < 2) return;
+      data.push({
+        key: serviceKey(plan.id, svcIdx),
+        plan, svc, svcIdx,
+        planId: plan.id,
+        selected: isServiceSelected(plan.id, svcIdx)
+      });
+    });
   });
 
-  const circles = nodesLayer.selectAll('circle')
-  .data(pointMeta)
-  .join('circle')
-  .attr('cx', d => xScale(d.t))
-  .attr('cy', d => yScale(d.km))
-  .attr('r', 5)
-  .attr('fill', plan.color)
-  .attr('stroke', '#fff')
-  .attr('stroke-width', 1.5)
-  .attr('class', 'node-dot')
-  .attr('opacity', 1)
-  .style('pointer-events', 'all')
-  .style('cursor', 'ew-resize')
-  .on('mouseover', function(event, d) {
-    const tooltip = DOM.get('chart-tooltip');
-    const eventType = d.isArrival ? 'Arr' : 'Dep';
-    tooltip.innerHTML = `<b>${d.node}</b> ${eventType}: ${formatTimeHHMM(d.t)}`;
-    tooltip.style.opacity = '1';
-    tooltip.style.left = (event.clientX + 12) + 'px';
-    tooltip.style.top = (event.clientY - 30) + 'px';
-  })
-  .on('mouseout', () => {
-    DOM.get('chart-tooltip').style.opacity = '0';
-  })
-  .on('mousemove', (event) => {
-    const tooltip = DOM.get('chart-tooltip');
-    tooltip.style.left = (event.clientX + 12) + 'px';
-    tooltip.style.top = (event.clientY - 30) + 'px';
-  })
-  .call(d3.drag()
-    .on('start', function(event, d) {
-      const t = d3.zoomTransform(chartState.svg.node());
-      const ik = 1 / t.k;
-      d3.select(this).attr('r', 7 * ik).raise();
-      StateManager.beginTimeEdit();
-      chartState._dragInfo = { svc, plan, d };
-    })
-    .on('drag', function(event, d) {
-      const newX = event.x;
-      const newTime = xScale.invert(newX);
-      const constrained = constrainTime(svc, d.stationIdx, d.isArrival, newTime, plan.serviceKey);
+  // Invisible wide hit areas (easier clicking / line dragging).
+  hitareaLayer.selectAll('path.service-hitarea')
+    .data(data, d => d.key)
+    .join(
+      enter => enter.append('path').attr('class', 'service-hitarea'),
+      update => update,
+      exit => exit.remove()
+    )
+    .attr('d', d => lineGen(buildServicePoints(d.svc, corridorNodes, corridorPositions)))
+    .each(function(d) { attachServiceInteractions(d3.select(this), d); });
 
-      // Update data model (forward propagation — raw delta, no constraint check during drag)
-      applyTimeRaw(svc, d.stationIdx, d.isArrival, constrained);
-
-      // Update ALL node positions smoothly
-      updateAllNodePositions(nodesLayer, svc, corridorPositions, plan.serviceKey, xScale, yScale);
-
-      // Update the service path (uses cached path ref from _serviceData)
-      const pathRef = chartState._serviceData.find(sd =>
-        sd.planId === plan.id && sd.svcIdx === svcIdx
-      );
-      if (pathRef && pathRef.pathEl) {
-        const pts = buildServicePoints(svc, corridorNodes, corridorPositions);
-        pathRef.pathEl.attr('d', pathRef.lineGen(pts));
-      }
-
-      // Update tooltip
-      const tooltip = DOM.get('chart-tooltip');
-      const eventType = d.isArrival ? 'Arr' : 'Dep';
-      const newVal = d.isArrival ? svc.times[d.stationIdx].arr : svc.times[d.stationIdx].dep;
-      tooltip.innerHTML = `<b>${d.node}</b> ${eventType}: ${formatTimeHHMM(newVal)}`;
-    })
-    .on('end', function() {
-      const t = d3.zoomTransform(chartState.svg.node());
-      d3.select(this).attr('r', 5 / t.k);
-      chartState._dragInfo = null;
-      // Enforce constraints after drag completes
-      enforceConstraints(svc, plan.serviceKey);
-      // Update detail panel only once at the end
-      updateDetailPanel();
-      StateManager.endTimeEdit();
-    })
-  );
+  // Visible service paths.
+  plansLayer.selectAll('path.service-path')
+    .data(data, d => d.key)
+    .join(
+      enter => enter.append('path').attr('class', 'service-path'),
+      update => update,
+      exit => exit.remove()
+    )
+    .attr('d', d => lineGen(buildServicePoints(d.svc, corridorNodes, corridorPositions)))
+    .attr('stroke', d => d.plan.color)
+    .attr('data-plan-id', d => d.planId)
+    .attr('data-svc-idx', d => d.svcIdx)
+    .classed('selected', d => d.selected)
+    .each(function(d) { attachServiceInteractions(d3.select(this), d); });
 }
 
-// Smoothly update all node circle positions during drag
-function updateAllNodePositions(nodesLayer, svc, corridorPositions, serviceKey, xScale, yScale) {
-  nodesLayer.selectAll('circle').each(function(d) {
-    const timeEntry = svc.times[d.stationIdx];
-    if (!timeEntry) return;
-    const t = d.isArrival ? timeEntry.arr : timeEntry.dep;
-    const km = corridorPositions[d.node];
-    if (km === undefined) return;
+/**
+ * Wire up click-to-select on any service line, and whole-trip dragging on the
+ * selected line. (Hover styling is handled in CSS.)
+ */
+function attachServiceInteractions(sel, d) {
+  sel
+    .classed('selected', d.selected)
+    .on('click', (event) => { event.stopPropagation(); selectService(d.planId, d.svcIdx); });
 
-    d3.select(this)
-      .attr('cx', xScale(t))
-      .attr('cy', yScale(km));
-  });
-}
-
-// Apply a raw time delta (no constraint enforcement — used during drag for speed).
-// Constraints are enforced once on drag end.
-function applyTimeRaw(svc, stationIdx, isArrival, newTime) {
-  const oldVal = isArrival ? svc.times[stationIdx].arr : svc.times[stationIdx].dep;
-  const delta = newTime - oldVal;
-  if (Math.abs(delta) < 0.0001) return;
-
-  // Forward propagate: this node's departure onward shifts by delta
-  for (let i = stationIdx; i < svc.times.length; i++) {
-    if (i === stationIdx && isArrival) {
-      svc.times[i].arr += delta;
-    }
-    svc.times[i].dep += delta;
-    if (i + 1 < svc.times.length) {
-      svc.times[i + 1].arr += delta;
-    }
+  if (d.selected) {
+    sel.call(serviceShiftDrag(d));
+  } else {
+    sel.on('.drag', null);  // unselected lines: no drag, let pan through
   }
 }
 
-// Smoothly update the service path during drag
-function updateServicePath(svc, plan, svcIdx, corridorNodes, corridorPositions, xScale, yScale) {
-  const points = buildServicePoints(svc, corridorNodes, corridorPositions);
-  const lineGen = d3.line()
-  .x(d => xScale(d[0]))
-  .y(d => yScale(d[1]));
+/** Drag behavior that shifts an entire service in time by grabbing its line. */
+function serviceShiftDrag(d) {
+  const { plan, svc, svcIdx } = d;
+  return d3.drag()
+    .on('start', function(event) {
+      chartState._lineDrag = {
+        started: false,
+        startTime: chartState.rx.invert(event.x),
+        orig: svc.times.map(t => ({ arr: t.arr, dep: t.dep })),
+        minArr: d3.min(svc.times, t => t.arr)
+      };
+    })
+    .on('drag', function(event) {
+      const ld = chartState._lineDrag;
+      if (!ld) return;
+      if (!ld.started) {
+        StateManager.beginTimeEdit();   // snapshot once, on first movement
+        ld.started = true;
+      }
+      let delta = chartState.rx.invert(event.x) - ld.startTime;
+      if (ld.minArr + delta < 0) delta = -ld.minArr;  // clamp at midnight
 
-  const pathClass = `path-${plan.id.replace(/[^a-zA-Z0-9]/g, '')}-${svcIdx}`;
-  chartState.drawG.selectAll(`.${pathClass}`).attr('d', lineGen(points));
+      svc.times.forEach((t, i) => {
+        t.arr = ld.orig[i].arr + delta;
+        t.dep = ld.orig[i].dep + delta;
+      });
+      redrawService(plan.id, svcIdx, svc);
+
+      const tooltip = DOM.get('chart-tooltip');
+      const sign = delta >= 0 ? '+' : '−';
+      tooltip.innerHTML = `<b>${plan.serviceKey} #${svc.serviceId}</b> shift ${sign}${formatDuration(Math.abs(delta))}`;
+      tooltip.style.opacity = '1';
+      positionTooltip(tooltip, event.sourceEvent.clientX, event.sourceEvent.clientY);
+    })
+    .on('end', function() {
+      const ld = chartState._lineDrag;
+      chartState._lineDrag = null;
+      DOM.get('chart-tooltip').style.opacity = '0';
+      if (ld && ld.started) {
+        updateDetailPanel();
+        StateManager.endTimeEdit();
+      }
+    });
+}
+
+/** Draw the draggable time-edit nodes for the currently selected service. */
+function renderSelectedServiceNodes(corridorNodes, corridorPositions, rx, yScale) {
+  const drawG = chartState.drawG;
+  let nodesLayer = drawG.select('g.node-layer');
+  if (nodesLayer.empty()) nodesLayer = drawG.append('g').attr('class', 'node-layer');
+  nodesLayer.raise();
+  chartState.nodesLayer = nodesLayer;
+
+  if (!STATE.selectedService) {
+    nodesLayer.selectAll('circle').remove();
+    chartState.selDrag = null;
+    return;
+  }
+
+  const sel = STATE.selectedService;
+  const plan = STATE.servicePlans.find(p => p.id === sel.planId);
+  const svc = plan && plan.services[sel.serviceIndex];
+  if (!plan || !svc) {
+    nodesLayer.selectAll('circle').remove();
+    chartState.selDrag = null;
+    return;
+  }
+
+  chartState.selDrag = { plan, svc, svcIdx: sel.serviceIndex };
+  renderDraggableNodes(nodesLayer, plan, svc, sel.serviceIndex, corridorPositions, rx, yScale);
+}
+
+/** Render and wire the draggable circles for a selected service. */
+function renderDraggableNodes(nodesLayer, plan, svc, svcIdx, corridorPositions, rx, yScale) {
+  const pointMeta = [];
+  svc.times.forEach((t, idx) => {
+    const km = corridorPositions[t.node];
+    if (km === undefined) return;
+    pointMeta.push({ km, node: t.node, stationIdx: idx, isArrival: true });
+    pointMeta.push({ km, node: t.node, stationIdx: idx, isArrival: false });
+  });
+
+  const nodeTime = d => {
+    const entry = svc.times[d.stationIdx];
+    return d.isArrival ? entry.arr : entry.dep;
+  };
+
+  nodesLayer.selectAll('circle')
+    .data(pointMeta)
+    .join('circle')
+    .attr('class', 'node-dot')
+    .attr('r', 5)
+    .attr('cx', d => rx(nodeTime(d)))
+    .attr('cy', d => yScale(d.km))
+    .attr('fill', plan.color)
+    .on('mouseover', function(event, d) {
+      const tooltip = DOM.get('chart-tooltip');
+      tooltip.innerHTML = `<b>${d.node}</b> ${d.isArrival ? 'Arr' : 'Dep'}: ${formatTimeHHMM(nodeTime(d))}`;
+      tooltip.style.opacity = '1';
+      positionTooltip(tooltip, event.clientX, event.clientY);
+    })
+    .on('mousemove', function(event) {
+      positionTooltip(DOM.get('chart-tooltip'), event.clientX, event.clientY);
+    })
+    .on('mouseout', () => { DOM.get('chart-tooltip').style.opacity = '0'; })
+    .call(d3.drag()
+      .on('start', function() {
+        chartState._nodeEditStarted = false;
+        d3.select(this).raise();
+      })
+      .on('drag', function(event, d) {
+        if (!chartState._nodeEditStarted) {
+          StateManager.beginTimeEdit();   // snapshot once, on first movement
+          chartState._nodeEditStarted = true;
+        }
+        const rxNow = chartState.rx;
+        const newTime = rxNow.invert(event.x);
+        const constrained = constrainTime(svc, d.stationIdx, d.isArrival, newTime, plan.serviceKey);
+        const oldVal = d.isArrival ? svc.times[d.stationIdx].arr : svc.times[d.stationIdx].dep;
+        propagateTimeDelta(svc, d.stationIdx, d.isArrival, constrained - oldVal);
+
+        redrawService(plan.id, svcIdx, svc);
+
+        const tooltip = DOM.get('chart-tooltip');
+        const newVal = d.isArrival ? svc.times[d.stationIdx].arr : svc.times[d.stationIdx].dep;
+        tooltip.innerHTML = `<b>${d.node}</b> ${d.isArrival ? 'Arr' : 'Dep'}: ${formatTimeHHMM(newVal)}`;
+        positionTooltip(tooltip, event.sourceEvent.clientX, event.sourceEvent.clientY);
+      })
+      .on('end', function() {
+        if (chartState._nodeEditStarted) {
+          enforceConstraints(svc, plan.serviceKey);
+          updateDetailPanel();
+          StateManager.endTimeEdit();
+        }
+        chartState._nodeEditStarted = false;
+      })
+    );
+}
+
+/**
+ * Redraw a single service's path, hit area, and (if selected) its nodes from the
+ * current data model and zoom scale — used for smooth live updates during drag.
+ */
+function redrawService(planId, svcIdx, svc) {
+  const rx = chartState.rx;
+  const yScale = chartState.yScale;
+  const lineGen = buildLineGen(rx, yScale);
+  const pts = buildServicePoints(svc, chartState.corridorNodes, chartState.corridorPositions);
+  const key = serviceKey(planId, svcIdx);
+
+  chartState.plansLayer.selectAll('path.service-path')
+    .filter(d => d.key === key).attr('d', lineGen(pts));
+  chartState.hitareaLayer.selectAll('path.service-hitarea')
+    .filter(d => d.key === key).attr('d', lineGen(pts));
+
+  if (chartState.nodesLayer) {
+    chartState.nodesLayer.selectAll('circle')
+      .attr('cx', d => rx(d.isArrival ? svc.times[d.stationIdx].arr : svc.times[d.stationIdx].dep))
+      .attr('cy', d => yScale(d.km));
+  }
+}
+
+/** Redraw all geometry against a new (zoomed) time scale. */
+function redrawTimeAxis(rx) {
+  const yScale = chartState.yScale;
+  const lineGen = buildLineGen(rx, yScale);
+  const nodes = chartState.corridorNodes;
+  const positions = chartState.corridorPositions;
+
+  if (chartState.plansLayer) {
+    chartState.plansLayer.selectAll('path.service-path')
+      .attr('d', d => lineGen(buildServicePoints(d.svc, nodes, positions)));
+  }
+  if (chartState.hitareaLayer) {
+    chartState.hitareaLayer.selectAll('path.service-hitarea')
+      .attr('d', d => lineGen(buildServicePoints(d.svc, nodes, positions)));
+  }
+  if (chartState.nodesLayer && chartState.selDrag) {
+    const svc = chartState.selDrag.svc;
+    chartState.nodesLayer.selectAll('circle')
+      .attr('cx', d => rx(d.isArrival ? svc.times[d.stationIdx].arr : svc.times[d.stationIdx].dep))
+      .attr('cy', d => yScale(d.km));
+  }
 }
 
 // =============================================================
@@ -531,11 +573,6 @@ function updateServicePath(svc, plan, svcIdx, corridorNodes, corridorPositions, 
 
 function selectService(planId, serviceIndex) {
   StateManager.selectService(planId, serviceIndex);
-}
-
-function highlightSelectedService() {
-  // Selection is handled during updateChart via CSS class 'selected'
-  // and via renderDraggableNodes for the selected service only.
 }
 
 function updateLegend() {
