@@ -1,2 +1,7 @@
 # MacOS specific files
 **/.DS_Store
+
+# local input files
+**/*xlsx
+**/*csv
+**/trainrun/input
