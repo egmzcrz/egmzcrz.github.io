@@ -91,6 +91,25 @@ document.addEventListener('keydown', (e) => {
     StateManager.deselectService();
     closeModal('modal-add-plan');
     closeModal('modal-edit-plans');
+    return;
+  }
+  // Backspace / Delete = delete the currently selected service
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    // Don't hijack the key while the user is typing in an input/textarea
+    const target = e.target;
+    const isEditable = target && (
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.tagName === 'SELECT' ||
+      target.isContentEditable
+    );
+    if (isEditable) return;
+
+    if (STATE.selectedService) {
+      e.preventDefault();
+      const { planId, serviceIndex } = STATE.selectedService;
+      deleteService(planId, serviceIndex);
+    }
   }
 });
 
@@ -155,5 +174,5 @@ DOM.get('time-end').addEventListener('keydown', (e) => {
 });
 
 // ---- Init ----
-console.log('Marey Chart Service Planner ready');
+console.log('Train Studio ready');
 console.log('Upload an Excel file to begin.');
