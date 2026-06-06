@@ -106,6 +106,15 @@ const StateManager = (function() {
     _notify();
   }
 
+  /** Change a plan's line color. Pushes undo automatically. */
+  function setPlanColor(planId, color) {
+    const plan = _state.servicePlans.find(p => p.id === planId);
+    if (!plan || plan.color === color) return;
+    _pushUndo();
+    plan.color = color;
+    _notify();
+  }
+
   /** Toggle a plan's visibility. No undo (reversible by toggling again). */
   function togglePlanVisibility(planId) {
     const plan = _state.servicePlans.find(p => p.id === planId);
@@ -207,6 +216,7 @@ const StateManager = (function() {
     setCorridorView,
     addServicePlan,
     removeServicePlan,
+    setPlanColor,
     togglePlanVisibility,
     selectService,
     deselectService,

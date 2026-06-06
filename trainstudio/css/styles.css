@@ -478,9 +478,22 @@
     .plan-list-item.hidden { opacity: .45; }
 
     .plan-list-item .plan-color {
-    width: 12px; height: 12px;
+    width: 16px; height: 16px;
     border-radius: 3px;
     flex-shrink: 0;
+    cursor: pointer;
+    border: 1px solid rgba(0,0,0,.12);
+    transition: transform var(--transition), box-shadow var(--transition);
+    }
+    .plan-list-item .plan-color:hover {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 2px var(--accent-light);
+    }
+    .plan-list-item .plan-color .plan-color-input {
+    position: absolute;
+    width: 0; height: 0;
+    opacity: 0;
+    pointer-events: none;
     }
 
     .plan-list-item .plan-name {
@@ -496,16 +509,17 @@
     position: absolute;
     top: 10px;
     left: 10px;
+    width: max-content;
+    max-width: calc(100% - 20px);
     background: rgba(255,255,255,.92);
     border-radius: var(--radius-sm);
     padding: 6px 10px;
     font-size: 11px;
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 8px 16px;
     pointer-events: none;
     box-shadow: var(--shadow);
-    max-width: 300px;
     }
 
     #chart-legend .legend-item {

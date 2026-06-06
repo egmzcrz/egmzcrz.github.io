@@ -140,7 +140,18 @@ function updatePlansModal() {
   STATE.servicePlans.forEach(function(plan) {
     container.appendChild(
       DOM.el('div', { className: 'plan-list-item' + (plan.visible ? '' : ' hidden') },
-        DOM.el('div', { className: 'plan-color', style: { background: plan.color } }),
+        DOM.el('label', {
+          className: 'plan-color',
+          style: { background: plan.color },
+          title: 'Click to change color'
+        },
+          DOM.el('input', {
+            type: 'color',
+            className: 'plan-color-input',
+            value: plan.color,
+            onChange: function(e) { StateManager.setPlanColor(plan.id, e.target.value); }
+          })
+        ),
         DOM.el('span', { className: 'plan-name' }, plan.serviceKey + ' (' + plan.services.length + ' services)'),
         DOM.el('span', { style: { fontSize: '11px', color: 'var(--text-muted)' } },
           plan.headwayMin + "' / " + plan.direction
