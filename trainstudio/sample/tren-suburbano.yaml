@@ -1,0 +1,31 @@
+name: "Tren Suburbano"
+description: "Tren Suburbano con 4 carros y AW3"
+
+mass: 269116
+adh_mass: 201080
+davis_a: 1.746
+davis_b: 0.0093
+davis_c: 0.00003
+rotational_inertia: 1.06
+
+braking_curve_table:
+  # [ speed (kmh), deceleration (m/s^2) ]
+  - [ 120        , 0.6690 ] # [  0, 120) => 0.6690
+  - [ 150        , 0.5567 ] # [120, 150) => 0.5567
+  - [ 180        , 0.5355 ] # [150, 180) => 0.5355
+  - [ 200        , 0.5271 ] # [180, 200) => 0.5271
+                            # [200, ...) => 0.5271
+
+tractive_effort_table:
+  # [ speed (kmh), force (N) ]
+  - [ 46         , 330000 ]
+  - [ 50         , 305000 ]
+  - [ 55         , 275000 ]
+  - [ 60         , 255000 ]
+  - [ 70         , 220000 ]
+  - [ 80         , 180000 ]
+  - [ 90         , 145000 ]
+  - [ 100        , 115000 ]
+  - [ 110        , 100000 ]
+  - [ 120        , 80000  ]
+  - [ 130        , 70000  ]

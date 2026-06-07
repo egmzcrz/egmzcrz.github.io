@@ -1,7 +1,7 @@
 // =============================================================
 // DOM — Element cache + creation helpers
 // =============================================================
-const DOM = (function() {
+export const DOM = (function() {
   'use strict';
 
   const _cache = {};
@@ -68,15 +68,10 @@ const DOM = (function() {
     return elem;
   }
 
-  /** Create a text node. */
-  function text(content) {
-    return document.createTextNode(String(content));
-  }
-
   /** Create an icon element (Font Awesome). */
   function icon(name) {
     return el('i', { className: 'fa-solid ' + name });
   }
 
-  return { get, clearCache, el, text, icon };
+  return { get, clearCache, el, icon };
 })();

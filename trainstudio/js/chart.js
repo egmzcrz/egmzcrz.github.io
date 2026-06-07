@@ -7,6 +7,13 @@
 // rather than applying an SVG transform, which keeps strokes crisp
 // and decouples time-zoom from distance.
 // =============================================================
+import { STATE, chartState, getPlan } from './state.js';
+import { StateManager } from './state-manager.js';
+import { DOM } from './dom.js';
+import { escapeHtml, formatTimeHMS, formatTimeHM, formatDuration } from './utils.js';
+import { shiftService, setStationDwell } from './schedule.js';
+import { buildServiceCurve as buildCurve } from './curve.js';
+import { updateDetailPanel } from './ui.js';
 
 // ---- Helpers ----
 
@@ -27,22 +34,6 @@ function buildLineGen(rx, yScale) {
   return d3.line().x(p => rx(p[0])).y(p => yScale(p[1]));
 }
 
-/** Format a duration in minutes as "Mm SSs" (used in the shift tooltip). */
-function formatDuration(min) {
-  const totalSec = Math.round(min * 60);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}m ${String(s).padStart(2, '0')}s`;
-}
-
-/** Format minutes-from-midnight as HH:MM for axis ticks (hours may exceed 23). */
-function formatAxisTime(minutes) {
-  const m = Math.round(minutes);
-  const h = Math.floor(m / 60);
-  const mm = ((m % 60) + 60) % 60;
-  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-}
-
 /** Position the shared tooltip relative to the chart panel from a DOM event. */
 function positionTooltip(tooltip, clientX, clientY) {
   const rect = DOM.get('chart-panel').getBoundingClientRect();
@@ -51,7 +42,7 @@ function positionTooltip(tooltip, clientX, clientY) {
 }
 
 // ---- Chart Initialization ----
-function initChart(preserveTransform) {
+export function initChart(preserveTransform) {
   const panel = DOM.get('chart-panel');
   const svg = d3.select('#chart-svg');
 
@@ -95,10 +86,6 @@ function initChart(preserveTransform) {
     .attr('width', innerW).attr('height', innerH);
 
   // ---- Layers (back to front) ----
-  // Single-track bands: span full width, vertical only — fixed across zoom.
-  const stLayer = chartG.append('g')
-    .attr('class', 'single-track-layer')
-    .attr('clip-path', 'url(#chart-clip)');
   // Horizontal station grid: fixed.
   const yGridG = chartG.append('g').attr('class', 'y-grid-layer');
   // Vertical time grid: redrawn on zoom.
@@ -133,7 +120,6 @@ function initChart(preserveTransform) {
   // Store references
   chartState.svg = svg;
   chartState.chartG = chartG;
-  chartState.stLayer = stLayer;
   chartState.drawG = drawG;
   chartState.yGridG = yGridG;
   chartState.xGridG = xGridG;
@@ -155,7 +141,7 @@ function initChart(preserveTransform) {
 }
 
 /** Reset the view to fit all data (identity zoom over the data extent). */
-function fitToView() {
+export function fitToView() {
   if (!chartState.svg || !chartState.zoom) return;
   chartState.svg.transition().duration(300)
     .call(chartState.zoom.transform, d3.zoomIdentity);
@@ -164,7 +150,7 @@ function fitToView() {
 // =============================================================
 // MAIN CHART UPDATE (orchestrator)
 // =============================================================
-function updateChart() {
+export function updateChart() {
   if (!STATE.corridorView || !STATE.services[STATE.corridorView]) return;
 
   const corridorData = STATE.services[STATE.corridorView];
@@ -211,7 +197,6 @@ function updateChart() {
 
   // ---- Render layers ----
   updateYAxis(corridorNodes, corridorPositions, yScale, yAxisG, yGridG, innerW);
-  renderSingleTrackLayer(corridorData.singleTrackSegments, yScale, innerW);
   renderServicePaths(corridorNodes, corridorPositions, rx, yScale);
   renderSelectedServiceNodes(corridorNodes, corridorPositions, rx, yScale);
   renderXAxis(xAxisG, xGridG, rx, innerW, innerH);
@@ -244,7 +229,7 @@ function renderXAxis(xAxisG, xGridG, rx, innerW, innerH) {
 
   xAxisG.call(
     d3.axisBottom(rx)
-      .tickFormat(d => formatAxisTime(d))
+      .tickFormat(d => formatTimeHM(d))
       .ticks(tickCount)
   );
 
@@ -256,22 +241,6 @@ function renderXAxis(xAxisG, xGridG, rx, innerW, innerH) {
       .ticks(tickCount)
   );
   xGridG.select('.domain').remove();
-}
-
-/** Draw single-track segments as full-width red dashed bands (fixed across zoom). */
-function renderSingleTrackLayer(stSegs, yScale, innerW) {
-  const segs = stSegs || [];
-  chartState.stLayer.selectAll('rect')
-    .data(segs)
-    .join('rect')
-    .attr('x', 0)
-    .attr('width', innerW)
-    .attr('y', d => Math.min(yScale(d.fromKm), yScale(d.toKm)))
-    .attr('height', d => Math.max(Math.abs(yScale(d.toKm) - yScale(d.fromKm)), 1))
-    .attr('fill', 'rgba(239, 68, 68, 0.10)')
-    .attr('stroke', 'rgba(239, 68, 68, 0.22)')
-    .attr('stroke-width', 0.5)
-    .attr('stroke-dasharray', '6 4');
 }
 
 function updateYAxis(corridorNodes, corridorPositions, yScale, yAxisG, yGridG, innerW) {
@@ -295,16 +264,29 @@ function updateYAxis(corridorNodes, corridorPositions, yScale, yAxisG, yGridG, i
     .attr('stroke-dasharray', '3 5');
 }
 
-/** Build polyline points for a service — only at stations on this corridor. */
-function buildServicePoints(svc, corridorNodes, corridorPositions) {
-  const points = [];
-  svc.times.forEach(t => {
-    const km = corridorPositions[t.node];
-    if (km === undefined) return; // station not in this corridor — skip
-    points.push([t.arr, km]);
-    points.push([t.dep, km]);
-  });
-  return points;
+/**
+ * Build the [time, km] polyline for a service trip mapped into the CURRENT
+ * corridor view. The string-line geometry (including the cross-corridor remap
+ * via shared stations) lives in the pure `curve.js` module; this wrapper just
+ * feeds it the relevant slices of STATE.
+ */
+function buildServiceCurve(svc) {
+  const data = STATE.services[svc.serviceKey];
+  const dirData = data && data.dir && data.dir[svc.direction];
+  const onCorridor = svc.serviceKey === STATE.corridorView;
+  const corridor = STATE.services[STATE.corridorView];
+  const corridorPositions = corridor ? corridor.positions : {};
+  return buildCurve(svc, dirData, onCorridor, corridorPositions);
+}
+
+/**
+ * The km at which a trip's station should be plotted in the current
+ * corridor, or undefined if the station isn't part of the corridor.
+ */
+function corridorKmFor(svc, stationEntry) {
+  if (svc.serviceKey === STATE.corridorView) return stationEntry.km;
+  const corridor = STATE.services[STATE.corridorView];
+  return corridor ? corridor.positions[stationEntry.node] : undefined;
 }
 
 /**
@@ -324,16 +306,20 @@ function renderServicePaths(corridorNodes, corridorPositions, rx, yScale) {
 
   const lineGen = buildLineGen(rx, yScale);
 
-  // Build the bound dataset (skip services with <2 corridor points).
+  // Build the bound dataset (skip services with <2 curve points). The
+  // corridor-mapped curve is computed ONCE here and cached on the datum as
+  // `d.points`; the hit area, the visible path, and zoom redraws all reuse
+  // it. It's only rebuilt when a trip's times change (see redrawService).
   const data = [];
   STATE.servicePlans.filter(p => p.visible).forEach(plan => {
     plan.services.forEach((svc, svcIdx) => {
-      const points = buildServicePoints(svc, corridorNodes, corridorPositions);
+      const points = buildServiceCurve(svc);
       if (points.length < 2) return;
       data.push({
         key: serviceKey(plan.id, svcIdx),
         plan, svc, svcIdx,
         planId: plan.id,
+        points,
         selected: isServiceSelected(plan.id, svcIdx)
       });
     });
@@ -347,7 +333,7 @@ function renderServicePaths(corridorNodes, corridorPositions, rx, yScale) {
       update => update,
       exit => exit.remove()
     )
-    .attr('d', d => lineGen(buildServicePoints(d.svc, corridorNodes, corridorPositions)))
+    .attr('d', d => lineGen(d.points))
     .each(function(d) { attachServiceInteractions(d3.select(this), d); });
 
   // Visible service paths.
@@ -358,7 +344,7 @@ function renderServicePaths(corridorNodes, corridorPositions, rx, yScale) {
       update => update,
       exit => exit.remove()
     )
-    .attr('d', d => lineGen(buildServicePoints(d.svc, corridorNodes, corridorPositions)))
+    .attr('d', d => lineGen(d.points))
     .attr('stroke', d => d.plan.color)
     .attr('data-plan-id', d => d.planId)
     .attr('data-svc-idx', d => d.svcIdx)
@@ -385,9 +371,11 @@ function attachServiceInteractions(sel, d) {
 /** Drag behavior that shifts an entire service in time by grabbing its line. */
 function serviceShiftDrag(d) {
   const { plan, svc, svcIdx } = d;
+  // Per-drag transient state, scoped to this behavior instance.
+  let ld = null;
   return d3.drag()
     .on('start', function(event) {
-      chartState._lineDrag = {
+      ld = {
         started: false,
         startTime: chartState.rx.invert(event.x),
         orig: svc.times.map(t => ({ arr: t.arr, dep: t.dep })),
@@ -395,7 +383,6 @@ function serviceShiftDrag(d) {
       };
     })
     .on('drag', function(event) {
-      const ld = chartState._lineDrag;
       if (!ld) return;
       if (!ld.started) {
         StateManager.beginTimeEdit();   // snapshot once, on first movement
@@ -412,18 +399,17 @@ function serviceShiftDrag(d) {
 
       const tooltip = DOM.get('chart-tooltip');
       const sign = delta >= 0 ? '+' : '−';
-      tooltip.innerHTML = `<b>${plan.serviceKey} #${svc.serviceId}</b> shift ${sign}${formatDuration(Math.abs(delta))}`;
+      tooltip.innerHTML = `<b>${escapeHtml(plan.name || plan.serviceKey)} #${svc.serviceId}</b> shift ${sign}${formatDuration(Math.abs(delta))}`;
       tooltip.style.opacity = '1';
       positionTooltip(tooltip, event.sourceEvent.clientX, event.sourceEvent.clientY);
     })
     .on('end', function() {
-      const ld = chartState._lineDrag;
-      chartState._lineDrag = null;
       DOM.get('chart-tooltip').style.opacity = '0';
       if (ld && ld.started) {
         updateDetailPanel();
         StateManager.endTimeEdit();
       }
+      ld = null;
     });
 }
 
@@ -442,7 +428,7 @@ function renderSelectedServiceNodes(corridorNodes, corridorPositions, rx, yScale
   }
 
   const sel = STATE.selectedService;
-  const plan = STATE.servicePlans.find(p => p.id === sel.planId);
+  const plan = getPlan(sel.planId);
   const svc = plan && plan.services[sel.serviceIndex];
   if (!plan || !svc) {
     nodesLayer.selectAll('circle').remove();
@@ -458,16 +444,23 @@ function renderSelectedServiceNodes(corridorNodes, corridorPositions, rx, yScale
 function renderDraggableNodes(nodesLayer, plan, svc, svcIdx, corridorPositions, rx, yScale) {
   const pointMeta = [];
   svc.times.forEach((t, idx) => {
-    const km = corridorPositions[t.node];
-    if (km === undefined) return;
+    const km = corridorKmFor(svc, t); // align with the corridor-mapped curve
+    if (km === undefined) return;     // station not in the current corridor
     pointMeta.push({ km, node: t.node, stationIdx: idx, isArrival: true });
-    pointMeta.push({ km, node: t.node, stationIdx: idx, isArrival: false });
+    // Departure node only adds value when there's a dwell to grab; for
+    // pass-through stations arr === dep, so one node suffices.
+    if (t.dep > t.arr) {
+      pointMeta.push({ km, node: t.node, stationIdx: idx, isArrival: false });
+    }
   });
 
   const nodeTime = d => {
     const entry = svc.times[d.stationIdx];
     return d.isArrival ? entry.arr : entry.dep;
   };
+
+  // Per-drag transient flag, scoped to this render's drag behavior instance.
+  let editStarted = false;
 
   nodesLayer.selectAll('circle')
     .data(pointMeta)
@@ -477,9 +470,12 @@ function renderDraggableNodes(nodesLayer, plan, svc, svcIdx, corridorPositions, 
     .attr('cx', d => rx(nodeTime(d)))
     .attr('cy', d => yScale(d.km))
     .attr('fill', plan.color)
+    // Keep a node click from bubbling to the chart-panel handler, which would
+    // otherwise deselect the very service whose nodes you're trying to edit.
+    .on('click', event => event.stopPropagation())
     .on('mouseover', function(event, d) {
       const tooltip = DOM.get('chart-tooltip');
-      tooltip.innerHTML = `<b>${d.node}</b> ${d.isArrival ? 'Arr' : 'Dep'}: ${formatTimeHHMM(nodeTime(d))}`;
+      tooltip.innerHTML = `<b>${escapeHtml(d.node)}</b> ${d.isArrival ? 'Arr' : 'Dep'}: ${formatTimeHMS(nodeTime(d))}`;
       tooltip.style.opacity = '1';
       positionTooltip(tooltip, event.clientX, event.clientY);
     })
@@ -489,34 +485,38 @@ function renderDraggableNodes(nodesLayer, plan, svc, svcIdx, corridorPositions, 
     .on('mouseout', () => { DOM.get('chart-tooltip').style.opacity = '0'; })
     .call(d3.drag()
       .on('start', function() {
-        chartState._nodeEditStarted = false;
+        editStarted = false;
         d3.select(this).raise();
       })
       .on('drag', function(event, d) {
-        if (!chartState._nodeEditStarted) {
+        if (!editStarted) {
           StateManager.beginTimeEdit();   // snapshot once, on first movement
-          chartState._nodeEditStarted = true;
+          editStarted = true;
         }
-        const rxNow = chartState.rx;
-        const newTime = rxNow.invert(event.x);
-        const constrained = constrainTime(svc, d.stationIdx, d.isArrival, newTime, plan.serviceKey);
-        const oldVal = d.isArrival ? svc.times[d.stationIdx].arr : svc.times[d.stationIdx].dep;
-        propagateTimeDelta(svc, d.stationIdx, d.isArrival, constrained - oldVal);
+        const newTime = chartState.rx.invert(event.x);
+        const entry = svc.times[d.stationIdx];
+        // Running times are fixed by physics: an arrival drag shifts the
+        // whole trip; a departure drag adjusts the dwell at this stop.
+        if (d.isArrival || !entry.stop) {
+          shiftService(svc, newTime - entry.arr);
+        } else {
+          setStationDwell(svc, d.stationIdx, newTime - entry.arr);
+        }
 
         redrawService(plan.id, svcIdx, svc);
 
         const tooltip = DOM.get('chart-tooltip');
-        const newVal = d.isArrival ? svc.times[d.stationIdx].arr : svc.times[d.stationIdx].dep;
-        tooltip.innerHTML = `<b>${d.node}</b> ${d.isArrival ? 'Arr' : 'Dep'}: ${formatTimeHHMM(newVal)}`;
+        const newVal = d.isArrival ? entry.arr : entry.dep;
+        const label = d.isArrival ? 'Arr' : (entry.stop ? 'Dep (dwell)' : 'Dep');
+        tooltip.innerHTML = `<b>${escapeHtml(d.node)}</b> ${label}: ${formatTimeHMS(newVal)}`;
         positionTooltip(tooltip, event.sourceEvent.clientX, event.sourceEvent.clientY);
       })
       .on('end', function() {
-        if (chartState._nodeEditStarted) {
-          enforceConstraints(svc, plan.serviceKey);
+        if (editStarted) {
           updateDetailPanel();
           StateManager.endTimeEdit();
         }
-        chartState._nodeEditStarted = false;
+        editStarted = false;
       })
     );
 }
@@ -529,13 +529,17 @@ function redrawService(planId, svcIdx, svc) {
   const rx = chartState.rx;
   const yScale = chartState.yScale;
   const lineGen = buildLineGen(rx, yScale);
-  const pts = buildServicePoints(svc, chartState.corridorNodes, chartState.corridorPositions);
+  const pts = buildServiceCurve(svc);
   const key = serviceKey(planId, svcIdx);
 
+  // The trip's times changed, so refresh the cached curve on the bound datum
+  // (keeps zoom redraws using d.points correct without a full re-render).
+  const updatePoints = d => { if (d.key === key) d.points = pts; };
+
   chartState.plansLayer.selectAll('path.service-path')
-    .filter(d => d.key === key).attr('d', lineGen(pts));
+    .filter(d => d.key === key).each(updatePoints).attr('d', lineGen(pts));
   chartState.hitareaLayer.selectAll('path.service-hitarea')
-    .filter(d => d.key === key).attr('d', lineGen(pts));
+    .filter(d => d.key === key).each(updatePoints).attr('d', lineGen(pts));
 
   if (chartState.nodesLayer) {
     chartState.nodesLayer.selectAll('circle')
@@ -548,16 +552,16 @@ function redrawService(planId, svcIdx, svc) {
 function redrawTimeAxis(rx) {
   const yScale = chartState.yScale;
   const lineGen = buildLineGen(rx, yScale);
-  const nodes = chartState.corridorNodes;
-  const positions = chartState.corridorPositions;
 
+  // Zoom only rescales time — the [time, km] curve is unchanged, so reuse
+  // the cached d.points rather than rebuilding it for every service.
   if (chartState.plansLayer) {
     chartState.plansLayer.selectAll('path.service-path')
-      .attr('d', d => lineGen(buildServicePoints(d.svc, nodes, positions)));
+      .attr('d', d => lineGen(d.points || buildServiceCurve(d.svc)));
   }
   if (chartState.hitareaLayer) {
     chartState.hitareaLayer.selectAll('path.service-hitarea')
-      .attr('d', d => lineGen(buildServicePoints(d.svc, nodes, positions)));
+      .attr('d', d => lineGen(d.points || buildServiceCurve(d.svc)));
   }
   if (chartState.nodesLayer && chartState.selDrag) {
     const svc = chartState.selDrag.svc;
@@ -583,10 +587,10 @@ function updateLegend() {
     return;
   }
   legend.style.display = '';
-  legend.innerHTML = visiblePlans.map(p => `
-<div class="legend-item">
-<div class="legend-swatch" style="background:${p.color};"></div>
-<span>${p.serviceKey} (${p.headwayMin}')</span>
-</div>
-`).join('');
+  legend.replaceChildren(...visiblePlans.map(p =>
+    DOM.el('div', { className: 'legend-item' },
+      DOM.el('div', { className: 'legend-swatch', style: { background: p.color } }),
+      DOM.el('span', {}, `${p.name || p.serviceKey} (${p.headwayMin}')`)
+    )
+  ));
 }

@@ -1,7 +1,7 @@
 // =============================================================
 // STATE MANAGER — Encapsulated state, undo/redo, pub/sub
 // =============================================================
-const StateManager = (function() {
+export const StateManager = (function() {
   'use strict';
 
   // ---- Internal state ----
@@ -36,19 +36,16 @@ const StateManager = (function() {
   }
 
   // ---- Snapshot / Restore ----
+  // Undo history covers the document (plans, selection, color cursor) only.
+  // The time filter is view state — like zoom/pan — and is deliberately
+  // excluded so undo/redo never silently changes what's filtered.
   function _snapshot() {
     return {
-      servicePlans: _state.servicePlans.map(p => ({
-        ...p,
-        services: p.services.map(s => ({
-          ...s,
-          times: s.times.map(t => ({ ...t }))
-        }))
-      })),
+      // servicePlans hold only plain data (no functions/DOM), so a structured
+      // clone deep-copies them safely without hand-rolled nested maps.
+      servicePlans: structuredClone(_state.servicePlans),
       selectedService: _state.selectedService ? { ..._state.selectedService } : null,
-      planColorIndex: _state.planColorIndex,
-      timeFilterStart: _state.timeFilterStart,
-      timeFilterEnd: _state.timeFilterEnd
+      planColorIndex: _state.planColorIndex
     };
   }
 
@@ -56,8 +53,6 @@ const StateManager = (function() {
     _state.servicePlans = snap.servicePlans;
     _state.selectedService = snap.selectedService;
     _state.planColorIndex = snap.planColorIndex;
-    _state.timeFilterStart = snap.timeFilterStart;
-    _state.timeFilterEnd = snap.timeFilterEnd;
   }
 
   function _pushUndo() {
@@ -82,6 +77,17 @@ const StateManager = (function() {
     _notify();
   }
 
+  /**
+   * Register a simulated geometry+rolling-stock as a selectable service
+   * (corridor). Reuses the entry if the key already exists (cached sim).
+   * Does not touch existing plans or undo history.
+   */
+  function registerService(key, serviceData) {
+    _state.services[key] = serviceData;
+    if (!_state.corridorView) _state.corridorView = key;
+    _notify();
+  }
+
   /** Switch corridor view (Y-axis). */
   function setCorridorView(key) {
     _state.corridorView = key;
@@ -103,6 +109,15 @@ const StateManager = (function() {
       _state.selectedService = null;
     }
     _state.servicePlans = _state.servicePlans.filter(p => p.id !== planId);
+    _notify();
+  }
+
+  /** Rename a service plan. Pushes undo automatically. */
+  function setPlanName(planId, name) {
+    const plan = _state.servicePlans.find(p => p.id === planId);
+    if (!plan || plan.name === name) return;
+    _pushUndo();
+    plan.name = name;
     _notify();
   }
 
@@ -163,10 +178,29 @@ const StateManager = (function() {
     _notify();
   }
 
-  /** 
-   * Begin a time-edit session (drag or text edit).
-   * Pushes one undo snapshot. Caller mutates svc.times directly,
-   * then calls endTimeEdit() to notify.
+  /**
+   * Apply a discrete edit to a single trip through the manager: snapshots for
+   * undo, runs the mutator on the trip, then notifies. Preferred over the
+   * begin/end bracket for one-shot edits so the snapshot can't be forgotten.
+   * @param {string} planId
+   * @param {number} serviceIndex
+   * @param {(svc: Object) => void} mutator — mutates svc.times in place.
+   */
+  function mutateService(planId, serviceIndex, mutator) {
+    const plan = _state.servicePlans.find(p => p.id === planId);
+    if (!plan) return;
+    const svc = plan.services[serviceIndex];
+    if (!svc) return;
+    _pushUndo();
+    mutator(svc);
+    _notify();
+  }
+
+  /**
+   * Begin a continuous time-edit session (live drag). Pushes one undo
+   * snapshot; the caller mutates svc.times directly across many frames and
+   * calls endTimeEdit() once when the drag ends. (For one-shot edits use
+   * mutateService instead.)
    */
   function beginTimeEdit() {
     _pushUndo();
@@ -213,9 +247,11 @@ const StateManager = (function() {
 
     // Mutations
     loadServices,
+    registerService,
     setCorridorView,
     addServicePlan,
     removeServicePlan,
+    setPlanName,
     setPlanColor,
     togglePlanVisibility,
     selectService,
@@ -223,6 +259,7 @@ const StateManager = (function() {
     deleteService,
     setTimeFilter,
     clearTimeFilter,
+    mutateService,
     beginTimeEdit,
     endTimeEdit,
 
@@ -230,10 +267,6 @@ const StateManager = (function() {
     undo,
     redo,
     canUndo,
-    canRedo,
-
-    // Snapshot (for drag operations that need manual control)
-    snapshot: _snapshot,
-    restore: _restore
+    canRedo
   };
 })();

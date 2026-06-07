@@ -1,8 +1,13 @@
 // =============================================================
 // DETAIL PANEL — Pure DOM construction (no innerHTML templates)
 // =============================================================
+import { STATE, getPlan } from './state.js';
+import { StateManager } from './state-manager.js';
+import { DOM } from './dom.js';
+import { formatTimeHMS, parseTimeHHMM, showToast } from './utils.js';
+import { shiftService, setStationDwell } from './schedule.js';
 
-function updateDetailPanel() {
+export function updateDetailPanel() {
   const emptyState = DOM.get('detail-empty');
   const content = DOM.get('detail-content');
 
@@ -17,7 +22,7 @@ function updateDetailPanel() {
   content.innerHTML = '';
 
   const { planId, serviceIndex } = STATE.selectedService;
-  const plan = STATE.servicePlans.find(p => p.id === planId);
+  const plan = getPlan(planId);
   if (!plan) return;
   const svc = plan.services[serviceIndex];
   if (!svc) return;
@@ -36,7 +41,7 @@ function updateDetailPanel() {
           DOM.icon(isNorth ? 'fa-arrow-up' : 'fa-arrow-down'),
           ' ' + svc.direction
         ),
-        DOM.el('span', { style: { marginLeft: '6px', color: 'var(--text-muted)' } }, plan.serviceKey)
+        DOM.el('span', { style: { marginLeft: '6px', color: 'var(--text-muted)' } }, plan.name || plan.serviceKey)
       )
     ),
     DOM.el('button', {
@@ -67,7 +72,7 @@ function updateDetailPanel() {
             DOM.el('input', {
               className: 'time-input',
               type: 'text',
-              value: formatTimeHHMM(t.arr),
+              value: formatTimeHMS(t.arr),
               onChange: makeTimeEditHandler(planId, serviceIndex, i, 'arr')
             })
           ),
@@ -75,7 +80,7 @@ function updateDetailPanel() {
             DOM.el('input', {
               className: 'time-input',
               type: 'text',
-              value: formatTimeHHMM(t.dep),
+              value: formatTimeHMS(t.dep),
               onChange: makeTimeEditHandler(planId, serviceIndex, i, 'dep')
             })
           )
@@ -95,18 +100,13 @@ function makeTimeEditHandler(planId, serviceIndex, stationIdx, type) {
   };
 }
 
-function hideDetailPanel() {
-  DOM.get('detail-empty').style.display = 'flex';
-  DOM.get('detail-content').style.display = 'none';
-}
-
-function deleteService(planId, serviceIndex) {
+export function deleteService(planId, serviceIndex) {
   StateManager.deleteService(planId, serviceIndex);
   showToast('Service deleted');
 }
 
 function onTimeEdit(planId, serviceIndex, stationIdx, type, valueStr) {
-  const plan = STATE.servicePlans.find(p => p.id === planId);
+  const plan = getPlan(planId);
   if (!plan) return;
   const svc = plan.services[serviceIndex];
   if (!svc) return;
@@ -117,27 +117,23 @@ function onTimeEdit(planId, serviceIndex, stationIdx, type, valueStr) {
     return;
   }
 
-  const isArrival = (type === 'arr');
-  const constrained = constrainTime(svc, stationIdx, isArrival, newMinutes, plan.serviceKey);
-
-  const oldVal = isArrival ? svc.times[stationIdx].arr : svc.times[stationIdx].dep;
-  const delta = constrained - oldVal;
-
-  if (Math.abs(delta) < 0.001) {
-    updateDetailPanel();
-    return;
-  }
-
-  StateManager.beginTimeEdit();
-  propagateTimeDelta(svc, stationIdx, isArrival, delta);
-  enforceConstraints(svc, plan.serviceKey);
-  StateManager.endTimeEdit();
+  const entry = svc.times[stationIdx];
+  StateManager.mutateService(planId, serviceIndex, s => {
+    if (type === 'arr' || !entry.stop) {
+      // Running times are fixed by physics → editing an arrival shifts the
+      // whole trip so this station arrives at the requested time.
+      shiftService(s, newMinutes - entry.arr);
+    } else {
+      // Editing a stop's departure changes its dwell.
+      setStationDwell(s, stationIdx, newMinutes - entry.arr);
+    }
+  });
 }
 
 // =============================================================
-// TIME FILTER INPUTS (used by undo/redo restore)
+// TIME FILTER INPUTS
 // =============================================================
-function updateTimeFilterInputs() {
-  DOM.get('time-start').value = STATE.timeFilterStart !== null ? formatTimeHHMM(STATE.timeFilterStart) : '';
-  DOM.get('time-end').value   = STATE.timeFilterEnd   !== null ? formatTimeHHMM(STATE.timeFilterEnd)   : '';
+export function updateTimeFilterInputs() {
+  DOM.get('time-start').value = STATE.timeFilterStart !== null ? formatTimeHMS(STATE.timeFilterStart) : '';
+  DOM.get('time-end').value   = STATE.timeFilterEnd   !== null ? formatTimeHMS(STATE.timeFilterEnd)   : '';
 }

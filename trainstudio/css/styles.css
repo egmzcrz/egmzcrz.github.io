@@ -204,6 +204,15 @@
 
     .btn-sm { padding: 4px 10px; font-size: 12px; }
     .btn-xs { padding: 2px 7px;  font-size: 11px; }
+    .btn-reset { font-size: 11px; }
+
+    /* Disabled controls: dimmed and non-interactive (replaces per-button
+       inline opacity that used to be toggled from JS). */
+    button:disabled {
+    opacity: 0.4;
+    cursor: default;
+    pointer-events: none;
+    }
 
     /* ============================================================
     Form Elements
@@ -501,6 +510,26 @@
     font-weight: 500;
     font-size: 13px;
     }
+    .plan-list-item .plan-name-input {
+    width: 100%;
+    font: inherit;
+    font-weight: 500;
+    color: inherit;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    padding: 2px 4px;
+    margin: -2px -4px;
+    transition: border-color var(--transition), background var(--transition);
+    }
+    .plan-list-item .plan-name-input:hover {
+    border-color: var(--border);
+    }
+    .plan-list-item .plan-name-input:focus {
+    outline: none;
+    background: #fff;
+    border-color: var(--accent);
+    }
 
     /* ============================================================
     Chart Legend
@@ -560,7 +589,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 200;
+    z-index: 50; /* above chart, below modals (100) so Add Plan modal sits on top */
     }
 
     .upload-card {

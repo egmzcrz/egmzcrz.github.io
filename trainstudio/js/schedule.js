@@ -1,165 +1,74 @@
 // =============================================================
-// SCHEDULE MODEL — Time math & constraint enforcement
+// SCHEDULE MODEL — Trip construction & edit primitives
+//
+// Trips are derived from the simulated dynamics: the running time
+// between consecutive stations is FIXED by physics. The only editable
+// quantities are therefore (a) when the trip starts (whole-trip shift)
+// and (b) the dwell at each stop-station. Edits propagate forward so
+// running times always stay consistent with the simulation.
 // =============================================================
 
 /**
- * Build arrival/departure times for a single trip along a sequence of stations.
+ * Build a single trip's station schedule from the simulated profile.
  *
- * @param {Array<{name: string, km: number, dwell_min: number}>} nodes
- *   Ordered list of stations with their dwell times.
- * @param {number} startTimeMin — Departure time from the first station (minutes from midnight).
- * @param {Object<string, number>} baseRunningTime
- *   Map of "StationA→StationB" keys to minimum running times in minutes.
- * @returns {Array<{node: string, arr: number, dep: number}>}
- *   Array of {node, arrival, departure} for each station in order.
+ * @param {Object} serviceData — entry in STATE.services (has .dir[direction]).
+ * @param {string} direction — 'north' or 'south'.
+ * @param {number} startOffsetMin — departure time from the first station.
+ * @param {number} dwellMin — dwell applied at every stop-station.
+ * @param {string} serviceKey — key into STATE.services (stored on the trip).
+ * @param {number} serviceId — display id.
+ * @returns {{serviceId, direction, serviceKey, times: Array<{node,arr,dep,km,stop}>}}
  */
-function buildTripTimesForService(nodes, startTimeMin, baseRunningTime) {
+export function buildTripFromProfile(serviceData, direction, startOffsetMin, dwellMin, serviceKey, serviceId) {
+  const dir = serviceData.dir[direction];
+  const order = dir.order;
+  const runTime = dir.runTime;
+
   const times = [];
-  let currentTime = startTimeMin;
-
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
-    const arr = currentTime;
-    const dep = arr + node.dwell_min;
-    times.push({ node: node.name, arr, dep });
-
-    currentTime = dep;
-    if (i < nodes.length - 1) {
-      const nextNode = nodes[i + 1];
-      const key = `${node.name}→${nextNode.name}`;
-      // Try both directions for running time
-      const rt = baseRunningTime[key] || baseRunningTime[`${nextNode.name}→${node.name}`] || 1;
-      currentTime += rt;
-    }
+  let t = startOffsetMin;
+  for (let k = 0; k < order.length; k++) {
+    const st = order[k];
+    const arr = t;
+    const dwell = st.stop ? dwellMin : 0;
+    const dep = arr + dwell;
+    times.push({ node: st.name, arr, dep, km: st.km, stop: st.stop });
+    if (k < order.length - 1) t = dep + runTime[k];
   }
 
-  return times;
+  return { serviceId, direction, serviceKey, times };
 }
 
 /**
- * Constrain a time edit to respect minimum running times and dwell times.
- *
- * @param {Object} svc — Service object with a `times` array of {node, arr, dep}.
- * @param {number} stationIdx — Index into `svc.times`.
- * @param {boolean} isArrival — True if editing arrival, false if editing departure.
- * @param {number} newTimeMin — Proposed new time in minutes from midnight.
- * @param {string} serviceKey — Key into STATE.services for constraint data.
- * @returns {number} The constrained time (never less than minimum allowed).
+ * Shift an entire trip in time by `delta` minutes (drag the line / edit an
+ * arrival). Clamps so the earliest event never goes before midnight.
+ * Returns the delta actually applied.
  */
-function constrainTime(svc, stationIdx, isArrival, newTimeMin, serviceKey) {
-  const data = STATE.services[serviceKey];
-  if (!data) return newTimeMin;
-
-  const baseRT = data.baseRunningTime;
-  const baseDwell = data.baseDwellTime || {};
+export function shiftService(svc, delta) {
   const times = svc.times;
-
-  // Minimum arrival time at station 0: 0
-  if (stationIdx === 0 && isArrival) {
-    return Math.max(0, newTimeMin);
-  }
-
-  // --- Running time from previous station ---
-  // arrival[stationIdx] - departure[stationIdx-1] >= baseRT
-  if (isArrival && stationIdx > 0) {
-    const prevDep = times[stationIdx - 1].dep;
-    const prevNode = times[stationIdx - 1].node;
-    const thisNode = times[stationIdx].node;
-    const key1 = `${prevNode}→${thisNode}`;
-    const key2 = `${thisNode}→${prevNode}`;
-    const minRT = baseRT[key1] || baseRT[key2] || 0.1;
-    newTimeMin = Math.max(newTimeMin, prevDep + minRT);
-  }
-
-  // --- Dwell time constraint ---
-  // departure - arrival >= baseDwellTime[station]
-  const nodeName = times[stationIdx].node;
-  const minDwell = baseDwell[nodeName] || 0;
-
-  if (!isArrival) {
-    // Dragging departure: must be >= arrival + minDwell
-    newTimeMin = Math.max(newTimeMin, times[stationIdx].arr + minDwell);
-  }
-
-  return newTimeMin;
+  let minArr = Infinity;
+  for (const t of times) if (t.arr < minArr) minArr = t.arr;
+  if (minArr + delta < 0) delta = -minArr;
+  if (delta === 0) return 0;
+  for (const t of times) { t.arr += delta; t.dep += delta; }
+  return delta;
 }
 
 /**
- * Forward-propagate a time delta through a service: the edited event and every
- * later event shift by `delta`. Editing an arrival also moves its own departure
- * (and onward); editing a departure leaves its own arrival fixed (changing the
- * dwell) and shifts everything after. Does NOT enforce constraints.
- *
- * @param {Object} svc — Service with `times` array.
- * @param {number} stationIdx — Index of the edited station.
- * @param {boolean} isArrival — True if the arrival was edited.
- * @param {number} delta — Minutes to shift by (may be negative).
+ * Set the dwell at a stop-station and propagate the change to all later
+ * events (running times downstream are preserved). No-op for pass-through
+ * stations (they have no dwell). Dwell is clamped to >= 0.
  */
-function propagateTimeDelta(svc, stationIdx, isArrival, delta) {
-  if (Math.abs(delta) < 0.0001) return;
+export function setStationDwell(svc, stationIdx, newDwellMin) {
   const times = svc.times;
-
-  if (isArrival) times[stationIdx].arr += delta;
-  times[stationIdx].dep += delta;
-  for (let i = stationIdx + 1; i < times.length; i++) {
-    times[i].arr += delta;
-    times[i].dep += delta;
-  }
-}
-
-/**
- * Apply a time edit to a service node and enforce constraints afterward.
- * Does NOT push undo — callers should use StateManager.beginTimeEdit/endTimeEdit.
- *
- * @param {Object} svc — Service with `times` array.
- * @param {number} stationIdx — Index of the edited station.
- * @param {boolean} isArrival — True if the arrival was edited.
- * @param {number} newTime — New time value in minutes.
- * @param {string} serviceKey — Key into STATE.services.
- */
-function applyTimeDelta(svc, stationIdx, isArrival, newTime, serviceKey) {
-  const oldVal = isArrival ? svc.times[stationIdx].arr : svc.times[stationIdx].dep;
-  propagateTimeDelta(svc, stationIdx, isArrival, newTime - oldVal);
-  enforceConstraints(svc, serviceKey);
-}
-
-/**
- * Enforce minimum running times and dwell times across an entire service.
- * Modifies `svc.times` in place to satisfy all constraints.
- *
- * @param {Object} svc — Service with `times` array of {node, arr, dep}.
- * @param {string} serviceKey — Key into STATE.services for base constraint data.
- */
-function enforceConstraints(svc, serviceKey) {
-  const data = STATE.services[serviceKey];
-  if (!data) return;
-
-  const baseRT = data.baseRunningTime;
-  const baseDwell = data.baseDwellTime || {};
-  const times = svc.times;
-
-  // Enforce running times
-  for (let i = 0; i < times.length - 1; i++) {
-    const rt = times[i + 1].arr - times[i].dep;
-    const nodeA = times[i].node;
-    const nodeB = times[i + 1].node;
-    const minRT = baseRT[`${nodeA}→${nodeB}`] || baseRT[`${nodeB}→${nodeA}`] || 0;
-    if (rt < minRT) {
-      const deficit = minRT - rt;
-      for (let j = i + 1; j < times.length; j++) {
-        times[j].arr += deficit;
-        times[j].dep += deficit;
-      }
-    }
-  }
-
-  // Enforce minimum dwell times
-  for (let i = 0; i < times.length; i++) {
-    const dwell = times[i].dep - times[i].arr;
-    const nodeName = times[i].node;
-    const minDwell = baseDwell[nodeName] || 0;
-    if (dwell < minDwell) {
-      times[i].dep = times[i].arr + minDwell;
-    }
+  const entry = times[stationIdx];
+  if (!entry || !entry.stop) return;
+  const nd = Math.max(0, newDwellMin);
+  const oldDwell = entry.dep - entry.arr;
+  const delta = nd - oldDwell;
+  if (Math.abs(delta) < 1e-9) return;
+  entry.dep = entry.arr + nd;
+  for (let k = stationIdx + 1; k < times.length; k++) {
+    times[k].arr += delta;
+    times[k].dep += delta;
   }
 }

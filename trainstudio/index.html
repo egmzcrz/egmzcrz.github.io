@@ -6,16 +6,18 @@
     <title>Train Studio</title>
 
     <!-- Font Awesome 6 -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+          integrity="sha384-t1nt8BQoYMLFN5p42tRAtuAAFQaCQODekUVeKKZrEnEyp4H2R0RHFz0KWpmj7i8g"
+          crossorigin="anonymous" referrerpolicy="no-referrer">
 
     <!-- Application styles -->
     <link rel="stylesheet" href="css/styles.css">
 
-    <!-- D3.js v7 -->
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- D3.js v7 (vendored locally to avoid a hard CDN dependency) -->
+    <script src="vendor/d3.v7.min.js"></script>
 
-    <!-- SheetJS for Excel -->
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <!-- js-yaml for rolling-stock YAML (vendored locally) -->
+    <script src="vendor/js-yaml.min.js"></script>
   </head>
   <body>
 
@@ -28,40 +30,40 @@
       <div id="topbar">
         <span class="logo"><i class="fa-solid fa-train-subway"></i> Train Studio</span>
 
-        <select id="corridor-select" class="form-select" disabled>
+        <select id="corridor-select" class="form-select" aria-label="Corridor (Y-axis)" disabled>
           <option value="">Load data first...</option>
         </select>
 
-        <button id="btn-add-plan" class="btn btn-primary" disabled>
-          <i class="fa-solid fa-plus"></i> Add Service Plan
+        <button id="btn-add-plan" class="btn btn-primary">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i> Add Service Plan
         </button>
 
         <button id="btn-edit-plans" class="btn btn-outline" disabled>
-          <i class="fa-solid fa-sliders"></i> Edit Plans
+          <i class="fa-solid fa-sliders" aria-hidden="true"></i> Edit Plans
         </button>
 
-        <button id="btn-undo" class="btn-icon" disabled title="Undo (Ctrl+Z)" style="opacity:0.4;">
-          <i class="fa-solid fa-rotate-left"></i>
+        <button id="btn-undo" class="btn-icon" disabled title="Undo (Ctrl+Z)" aria-label="Undo (Ctrl+Z)">
+          <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
         </button>
-        <button id="btn-redo" class="btn-icon" disabled title="Redo (Ctrl+Shift+Z)" style="opacity:0.4;">
-          <i class="fa-solid fa-rotate-right"></i>
+        <button id="btn-redo" class="btn-icon" disabled title="Redo (Ctrl+Shift+Z)" aria-label="Redo (Ctrl+Shift+Z)">
+          <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
         </button>
 
-        <button id="btn-fit" class="btn-icon" disabled title="Fit to view (F)" style="opacity:0.4;">
-          <i class="fa-solid fa-expand"></i>
+        <button id="btn-fit" class="btn-icon" disabled title="Fit to view (F)" aria-label="Fit to view (F)">
+          <i class="fa-solid fa-expand" aria-hidden="true"></i>
         </button>
 
         <div class="spacer"></div>
 
-        <span class="time-filter-label">Time:</span>
-        <input id="time-start" class="time-filter-input" type="text" placeholder="Start (HH:MM:SS)" maxlength="8">
-        <span class="time-filter-dash">–</span>
-        <input id="time-end" class="time-filter-input" type="text" placeholder="End (HH:MM:SS)" maxlength="8">
+        <span class="time-filter-label" id="time-filter-label">Time:</span>
+        <input id="time-start" class="time-filter-input" type="text" placeholder="Start (HH:MM:SS)" maxlength="8" aria-label="Time filter start (HH:MM:SS)">
+        <span class="time-filter-dash" aria-hidden="true">–</span>
+        <input id="time-end" class="time-filter-input" type="text" placeholder="End (HH:MM:SS)" maxlength="8" aria-label="Time filter end (HH:MM:SS)">
         <button id="btn-time-apply" class="btn btn-sm btn-outline">Apply</button>
-        <button id="btn-time-reset" class="btn btn-sm btn-ghost" style="font-size:11px;">Reset</button>
+        <button id="btn-time-reset" class="btn btn-sm btn-ghost btn-reset">Reset</button>
 
         <button id="btn-download" class="btn btn-outline" disabled>
-          <i class="fa-solid fa-download"></i> Download
+          <i class="fa-solid fa-download" aria-hidden="true"></i> Download
         </button>
       </div>
 
@@ -92,17 +94,27 @@
 
     <!-- Add Service Plan Modal -->
     <div id="modal-add-plan" class="modal-overlay" style="display:none;">
-      <div class="modal">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-add-plan-title">
         <div class="modal-header">
-          <h2>Add Service Plan</h2>
-          <button class="btn-icon" onclick="closeModal('modal-add-plan')">
-            <i class="fa-solid fa-xmark"></i>
+          <h2 id="modal-add-plan-title">Add Service Plan</h2>
+          <button class="btn-icon" data-close="modal-add-plan" aria-label="Close">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
           </button>
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label class="form-label">Service</label>
-            <select id="add-service-select" class="form-select" style="width:100%;"></select>
+            <label class="form-label">Plan Name</label>
+            <input id="add-plan-name" class="form-input" type="text" required placeholder="Plan Service 1">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Track Geometry (CSV)</label>
+              <input id="add-geom-file" class="form-input" type="file" accept=".csv">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Rolling Stock (YAML)</label>
+              <input id="add-stock-file" class="form-input" type="file" accept=".yaml,.yml">
+            </div>
           </div>
           <div class="form-row">
             <div class="form-group">
@@ -116,6 +128,10 @@
           </div>
           <div class="form-row">
             <div class="form-group">
+              <label class="form-label">Dwell at Stops (s)</label>
+              <input id="add-dwell" class="form-input" type="number" value="30" min="0" step="1">
+            </div>
+            <div class="form-group">
               <label class="form-label">Direction</label>
               <select id="add-direction" class="form-select" style="width:100%;">
                 <option value="both">Both (North &amp; South)</option>
@@ -123,14 +139,14 @@
                 <option value="south">South only</option>
               </select>
             </div>
-            <div class="form-group">
-              <label class="form-label">Color</label>
-              <div id="add-color-palette" class="color-palette"></div>
-            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Color</label>
+            <div id="add-color-palette" class="color-palette"></div>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-ghost" onclick="closeModal('modal-add-plan')">Cancel</button>
+          <button class="btn btn-ghost" data-close="modal-add-plan">Cancel</button>
           <button class="btn btn-primary" id="btn-add-plan-confirm">Add Plan</button>
         </div>
       </div>
@@ -138,29 +154,28 @@
 
     <!-- Edit Service Plans Modal -->
     <div id="modal-edit-plans" class="modal-overlay" style="display:none;">
-      <div class="modal">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-edit-plans-title">
         <div class="modal-header">
-          <h2>Service Plans</h2>
-          <button class="btn-icon" onclick="closeModal('modal-edit-plans')">
-            <i class="fa-solid fa-xmark"></i>
+          <h2 id="modal-edit-plans-title">Service Plans</h2>
+          <button class="btn-icon" data-close="modal-edit-plans" aria-label="Close">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
           </button>
         </div>
         <div class="modal-body" id="edit-plans-list">
           <p style="color:var(--text-muted); font-size:13px;">No service plans yet.</p>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-ghost" onclick="closeModal('modal-edit-plans')">Close</button>
+          <button class="btn btn-ghost" data-close="modal-edit-plans">Close</button>
         </div>
       </div>
     </div>
 
-    <!-- Upload Overlay -->
+    <!-- Welcome Overlay -->
     <div id="upload-overlay">
       <div class="upload-card" id="upload-card">
-        <i class="fa-solid fa-file-excel"></i>
-        <h2>Upload Excel File</h2>
-        <p>Click or drag &amp; drop a .xlsx file with service sheets</p>
-        <input type="file" id="file-input" accept=".xlsx,.xls" style="display:none;">
+        <i class="fa-solid fa-train-subway"></i>
+        <h2>Add a Service Plan</h2>
+        <p>Click to load a track geometry (CSV) and<br>rolling stock (YAML), then simulate the timetable</p>
       </div>
     </div>
 
@@ -168,19 +183,10 @@
     <div id="toast"></div>
 
     <!-- ============================================================
-    Application Scripts (load order matters)
+    Application entry point. ES modules resolve their own dependency
+    graph, so only the entry module is referenced here.
     ============================================================ -->
-    <script src="js/constants.js"></script>
-    <script src="js/dom.js"></script>
-    <script src="js/utils.js"></script>
-    <script src="js/state-manager.js"></script>
-    <script src="js/state.js"></script>
-    <script src="js/schedule.js"></script>
-    <script src="js/plans.js"></script>
-    <script src="js/parser.js"></script>
-    <script src="js/chart.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/app.js"></script>
+    <script type="module" src="js/app.js"></script>
 
   </body>
 </html>

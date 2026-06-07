@@ -1,13 +1,21 @@
 // =============================================================
-// STATE — Backward-compatible reference to StateManager
+// STATE — Shared read-access reference + chart render state
 // =============================================================
-// STATE is a direct reference to StateManager.state so all
-// existing read-access (STATE.services, STATE.servicePlans, etc.)
-// continues to work. Mutations should go through StateManager methods.
-const STATE = StateManager.state;
+import { StateManager } from './state-manager.js';
+import { DOM } from './dom.js';
 
-// Chart rendering state (D3 references — not managed by StateManager)
-let chartState = {
+// STATE is a direct reference to StateManager.state so all read-access
+// (STATE.services, STATE.servicePlans, etc.) is convenient. Mutations must
+// go through StateManager methods.
+export const STATE = StateManager.state;
+
+/** Look up a service plan by id (null if not found). */
+export function getPlan(planId) {
+  return STATE.servicePlans.find(p => p.id === planId) || null;
+}
+
+// Chart rendering state (D3 references — not managed by StateManager).
+export const chartState = {
   svg: null,
   chartG: null,
   xScale: null,
@@ -20,19 +28,12 @@ let chartState = {
   margin: { top: 30, right: 40, bottom: 40, left: 120 }
 };
 
-// ---- Legacy function wrappers (delegate to StateManager) ----
-function pushUndo()   { StateManager.beginTimeEdit(); }
-function undo()        { StateManager.undo(); }
-function redo()        { StateManager.redo(); }
-function snapshotState() { return StateManager.snapshot(); }
-function restoreSnapshot(snap) { StateManager.restore(snap); }
+export function undo() { StateManager.undo(); }
+export function redo() { StateManager.redo(); }
 
-// Legacy: update buttons (now driven by subscriber)
-function updateUndoButtons() {
-  const uBtn = DOM.get('btn-undo');
-  const rBtn = DOM.get('btn-redo');
-  uBtn.disabled = !StateManager.canUndo();
-  uBtn.style.opacity = StateManager.canUndo() ? '1' : '0.4';
-  rBtn.disabled = !StateManager.canRedo();
-  rBtn.style.opacity = StateManager.canRedo() ? '1' : '0.4';
+/** Sync the undo/redo button enabled state with the history stacks.
+ *  (Disabled appearance is handled by CSS `button:disabled`.) */
+export function updateUndoButtons() {
+  DOM.get('btn-undo').disabled = !StateManager.canUndo();
+  DOM.get('btn-redo').disabled = !StateManager.canRedo();
 }

@@ -1,0 +1,19 @@
+{
+  "name": "trainstudio",
+  "version": "1.0.0",
+  "description": "Train Studio — interactive Marey/string-line timetable studio simulating train dynamics from track geometry + rolling stock.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "serve": "python3 -m http.server 8000",
+    "test": "node --test",
+    "lint": "eslint js",
+    "format": "prettier --write \"**/*.{js,css,html,json,md}\"",
+    "format:check": "prettier --check \"**/*.{js,css,html,json,md}\""
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.0.0"
+  }
+}
