@@ -109,6 +109,12 @@ export const StateManager = (function() {
       _state.selectedService = null;
     }
     _state.servicePlans = _state.servicePlans.filter(p => p.id !== planId);
+    // If the corridor being viewed is no longer used by any remaining plan,
+    // switch to one that is (or clear it when no plans are left).
+    const usedKeys = new Set(_state.servicePlans.map(p => p.serviceKey));
+    if (_state.corridorView && !usedKeys.has(_state.corridorView)) {
+      _state.corridorView = _state.servicePlans.length ? _state.servicePlans[0].serviceKey : null;
+    }
     _notify();
   }
 

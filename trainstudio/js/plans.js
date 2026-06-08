@@ -17,9 +17,14 @@ import { openModal, closeModal, showToast, generateId } from './utils.js';
 // ---- Corridor Select (Y-axis chooser) ----
 export function populateCorridorSelect() {
   const sel = DOM.get('corridor-select');
+  // Only corridors referenced by at least one current plan are selectable.
+  // STATE.services keeps cached simulations around (for undo / re-adding a
+  // plan on the same geometry), but an orphaned corridor must not linger in
+  // the dropdown after its plan is deleted.
+  const usedKeys = [...new Set(STATE.servicePlans.map(p => p.serviceKey))];
   // The value stays the serviceKey (the geometry the chart indexes on), but
   // the label shows the plan name(s) using that geometry instead of filenames.
-  const options = Object.keys(STATE.services).map(key => {
+  const options = usedKeys.map(key => {
     const names = [...new Set(
       STATE.servicePlans.filter(p => p.serviceKey === key).map(p => p.name).filter(Boolean)
     )];
