@@ -347,6 +347,11 @@
     animation: slideUp 180ms ease;
     }
 
+    /* Add Service Plan modal has more inner controls — give it extra room */
+    #modal-add-plan .modal {
+    width: 540px;
+    }
+
     @keyframes slideUp {
     from { transform: translateY(12px); opacity: 0; }
     to   { transform: translateY(0);    opacity: 1; }
