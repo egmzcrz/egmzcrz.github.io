@@ -240,6 +240,20 @@
     white-space: nowrap;
     }
 
+    .block-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    cursor: pointer;
+    }
+    .block-toggle input { cursor: pointer; }
+
+    .block-length-input { width: 64px; }
+
     .time-filter-dash {
     color: var(--text-muted);
     font-size: 13px;
@@ -701,6 +715,16 @@
     }
 
     .grid .domain { display: none; }
+
+    /* Signaling-block occupancy rectangles (drawn beneath the service lines).
+       Translucent fill in the service colour; non-interactive so they never
+       intercept line clicks or chart panning. */
+    .block-rect {
+    fill-opacity: 0.12;
+    stroke-opacity: 0.35;
+    stroke-width: 0.5;
+    pointer-events: none;
+    }
 
     .service-path {
     fill: none;

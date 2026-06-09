@@ -15,7 +15,10 @@ export const StateManager = (function() {
     redoStack: [],
     maxUndo: 50,
     timeFilterStart: null,
-    timeFilterEnd: null
+    timeFilterEnd: null,
+    // Signaling-block overlay (view state, like the time filter — not undone).
+    blockLengthM: 500,
+    showBlocks: false
   };
 
   const _listeners = [];
@@ -184,6 +187,22 @@ export const StateManager = (function() {
     _notify();
   }
 
+  /** Set the global signaling-block length (metres). No undo (view state). */
+  function setBlockLength(metres) {
+    const v = Math.max(1, Math.round(Number(metres) || 0));
+    if (_state.blockLengthM === v) return;
+    _state.blockLengthM = v;
+    _notify();
+  }
+
+  /** Toggle the signaling-block overlay on/off. No undo (view state). */
+  function setShowBlocks(show) {
+    show = !!show;
+    if (_state.showBlocks === show) return;
+    _state.showBlocks = show;
+    _notify();
+  }
+
   /**
    * Apply a discrete edit to a single trip through the manager: snapshots for
    * undo, runs the mutator on the trip, then notifies. Preferred over the
@@ -265,6 +284,8 @@ export const StateManager = (function() {
     deleteService,
     setTimeFilter,
     clearTimeFilter,
+    setBlockLength,
+    setShowBlocks,
     mutateService,
     beginTimeEdit,
     endTimeEdit,

@@ -197,6 +197,7 @@ export function updateChart() {
 
   // ---- Render layers ----
   updateYAxis(corridorNodes, corridorPositions, yScale, yAxisG, yGridG, innerW);
+  renderBlocks(rx, yScale);
   renderServicePaths(corridorNodes, corridorPositions, rx, yScale);
   renderSelectedServiceNodes(corridorNodes, corridorPositions, rx, yScale);
   renderXAxis(xAxisG, xGridG, rx, innerW, innerH);
@@ -350,6 +351,132 @@ function renderServicePaths(corridorNodes, corridorPositions, rx, yScale) {
     .attr('data-svc-idx', d => d.svcIdx)
     .classed('selected', d => d.selected)
     .each(function(d) { attachServiceInteractions(d3.select(this), d); });
+}
+
+/**
+ * Signaling-block occupancy rectangles for one service curve.
+ *
+ * The corridor distance axis is partitioned into fixed blocks of length `Lkm`
+ * measured from distance 0 (a shared grid for every train/direction). For each
+ * block the curve passes through we emit one rectangle whose height is the
+ * block's distance band and whose time-extent [t0,t1] is how long the train is
+ * within that band — i.e. block_length / speed, so faster trains get narrower
+ * rectangles. The curve runs corner-to-corner through each rectangle, so the
+ * stack is a staircase "buffer" that hugs the service line.
+ *
+ * @param {Array<[number,number]>} points — [time(min), distance(km)] polyline.
+ * @param {number} Lkm — block length in km (> 0).
+ */
+function computeBlockRects(points, Lkm) {
+  if (!points || points.length < 2 || !(Lkm > 0)) return [];
+
+  let minKm = Infinity, maxKm = -Infinity;
+  for (const p of points) {
+    if (p[1] < minKm) minKm = p[1];
+    if (p[1] > maxKm) maxKm = p[1];
+  }
+  const bFirst = Math.floor(minKm / Lkm);
+  const bLast = Math.ceil(maxKm / Lkm) - 1;
+
+  const rects = [];
+  for (let b = bFirst; b <= bLast; b++) {
+    const lo = b * Lkm, hi = (b + 1) * Lkm;
+    // Clip each polyline segment to the band [lo,hi] and take the union of the
+    // time spans. Time advances monotonically along `points`, so the min entry
+    // / max exit time bound the (contiguous) occupancy of this band.
+    let t0 = Infinity, t1 = -Infinity;
+    for (let i = 0; i < points.length - 1; i++) {
+      const [ta, da] = points[i];
+      const [tb, db] = points[i + 1];
+      let s0, s1;
+      if (da === db) {
+        if (da < lo || da > hi) continue;   // dwell outside this band
+        s0 = 0; s1 = 1;
+      } else {
+        const sLo = (lo - da) / (db - da);
+        const sHi = (hi - da) / (db - da);
+        s0 = Math.max(0, Math.min(sLo, sHi));
+        s1 = Math.min(1, Math.max(sLo, sHi));
+        if (s1 <= s0) continue;             // segment misses this band
+      }
+      const tStart = ta + (tb - ta) * s0;
+      const tEnd = ta + (tb - ta) * s1;
+      if (tStart < t0) t0 = tStart;
+      if (tEnd > t1) t1 = tEnd;
+    }
+    if (t1 > t0) rects.push({ b, lo, hi, t0, t1 });
+  }
+  return rects;
+}
+
+// Blocks narrower than this many on-screen pixels are culled — at that size
+// they're invisible anyway, and skipping them keeps the DOM light when zoomed
+// out (an all-day view can hold thousands of blocks). The cull is width-based,
+// so it re-evaluates on every zoom level via drawBlockRects.
+const MIN_BLOCK_PX = 0.6;
+
+/**
+ * Draw the signaling-block overlay (one translucent rectangle per block each
+ * visible service occupies). Rendered into a layer beneath the service lines.
+ * Controlled by STATE.showBlocks / STATE.blockLengthM.
+ *
+ * The full block geometry is computed once here and cached on
+ * chartState.blockData; the actual DOM join (with sub-pixel culling) lives in
+ * drawBlockRects so zoom redraws can re-cull cheaply without recomputing it.
+ */
+function renderBlocks(rx, yScale) {
+  const drawG = chartState.drawG;
+  let blockLayer = drawG.select('g.block-layer');
+  if (blockLayer.empty()) {
+    // Insert beneath the hitarea/service/node layers so lines stay on top.
+    blockLayer = drawG.insert('g', ':first-child').attr('class', 'block-layer');
+  }
+  chartState.blockLayer = blockLayer;
+
+  const Lkm = (STATE.blockLengthM || 0) / 1000;
+  const blockData = [];
+  if (STATE.showBlocks && Lkm > 0) {
+    STATE.servicePlans.filter(p => p.visible).forEach(plan => {
+      plan.services.forEach((svc, svcIdx) => {
+        const points = buildServiceCurve(svc);
+        if (points.length < 2) return;
+        const base = serviceKey(plan.id, svcIdx);
+        computeBlockRects(points, Lkm).forEach(r => blockData.push({
+          key: base + ':' + r.b,
+          color: plan.color,
+          t0: r.t0, t1: r.t1, lo: r.lo, hi: r.hi
+        }));
+      });
+    });
+  }
+  chartState.blockData = blockData;
+  drawBlockRects(rx, yScale);
+}
+
+/**
+ * Bind the cached block dataset to the layer, culling rects whose current
+ * on-screen width is below MIN_BLOCK_PX. Called on full render and on every
+ * zoom redraw (where the pixel width — and thus the cull set — changes).
+ */
+function drawBlockRects(rx, yScale) {
+  const layer = chartState.blockLayer;
+  if (!layer) return;
+  const data = (chartState.blockData || [])
+    .filter(d => rx(d.t1) - rx(d.t0) >= MIN_BLOCK_PX);
+
+  layer.selectAll('rect.block-rect')
+    .data(data, d => d.key)
+    .join(
+      enter => enter.append('rect').attr('class', 'block-rect'),
+      update => update,
+      exit => exit.remove()
+    )
+    .attr('x', d => rx(d.t0))
+    .attr('width', d => Math.max(0, rx(d.t1) - rx(d.t0)))
+    .attr('y', d => yScale(d.hi))
+    .attr('height', d => Math.max(0, yScale(d.lo) - yScale(d.hi)))
+    .attr('fill', d => d.color)
+    .attr('stroke', d => d.color);
 }
 
 /**
@@ -552,6 +679,12 @@ function redrawService(planId, svcIdx, svc) {
 function redrawTimeAxis(rx) {
   const yScale = chartState.yScale;
   const lineGen = buildLineGen(rx, yScale);
+
+  // Block rectangles only shift/scale in time (their distance bands are fixed).
+  // Re-run the bind so the sub-pixel cull set updates for the new zoom level.
+  if (chartState.blockLayer) {
+    drawBlockRects(rx, yScale);
+  }
 
   // Zoom only rescales time — the [time, km] curve is unchanged, so reuse
   // the cached d.points rather than rebuilding it for every service.
