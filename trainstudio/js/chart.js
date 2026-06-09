@@ -151,7 +151,14 @@ export function fitToView() {
 // MAIN CHART UPDATE (orchestrator)
 // =============================================================
 export function updateChart() {
-  if (!STATE.corridorView || !STATE.services[STATE.corridorView]) return;
+  if (!STATE.corridorView || !STATE.services[STATE.corridorView]) {
+    // No corridor to show (e.g. the last plan was just deleted). Clear any
+    // previously-rendered service geometry so it doesn't linger in the
+    // background — otherwise stale paths stay clickable and reference plans
+    // that no longer exist.
+    clearServiceLayers();
+    return;
+  }
 
   const corridorData = STATE.services[STATE.corridorView];
   const corridorNodes = corridorData.nodes;
@@ -208,6 +215,18 @@ export function updateChart() {
 // =============================================================
 // RENDER FUNCTIONS
 // =============================================================
+
+/**
+ * Empty every layer that holds per-service geometry (lines, hit areas, blocks,
+ * selection nodes). Used when there's no corridor to render so stale paths from
+ * a just-deleted plan don't linger — and stay clickable — in the background.
+ */
+function clearServiceLayers() {
+  const drawG = chartState.drawG;
+  if (!drawG) return;
+  drawG.selectAll('g.hitarea-layer, g.service-layer, g.block-layer, g.node-layer')
+    .selectAll('*').remove();
+}
 
 /** Set Y scale domain from corridor station km values. */
 function setupYScaleDomain(corridorNodes, yScale, innerH) {

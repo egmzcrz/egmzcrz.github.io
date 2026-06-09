@@ -102,6 +102,14 @@ export const StateManager = (function() {
     _pushUndo();
     _state.servicePlans.push(plan);
     _state.planColorIndex++;
+    // Ensure a corridor is being viewed. Deleting the last plan clears
+    // corridorView, and re-adding a plan on a *cached* geometry skips
+    // registerService (which would otherwise restore it) — so without this
+    // the chart would keep early-returning and leave stale paths on screen.
+    const usedKeys = new Set(_state.servicePlans.map(p => p.serviceKey));
+    if (!_state.corridorView || !usedKeys.has(_state.corridorView)) {
+      _state.corridorView = plan.serviceKey;
+    }
     _notify();
   }
 
