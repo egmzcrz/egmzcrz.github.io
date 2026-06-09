@@ -354,33 +354,62 @@ function renderServicePaths(corridorNodes, corridorPositions, rx, yScale) {
 }
 
 /**
+ * Block distance-bands derived from the corridor's station spacing.
+ *
+ * Blocks are placed per inter-station segment: for each gap between consecutive
+ * stations the block count is round(gap / Lkm) (at least 1), and the gap is
+ * split into that many EQUAL blocks. So a 2.3 km gap with a 1.5 km nominal
+ * length → round(1.53) = 2 blocks of 1.15 km each. Block length therefore
+ * adapts per segment instead of following a rigid grid from distance 0, and
+ * every block boundary lands either on a station or evenly between two.
+ *
+ * @param {Array<{km:number}>} corridorNodes — the current corridor's stations.
+ * @param {number} Lkm — nominal block length in km (> 0).
+ * @returns {Array<{lo:number, hi:number}>} bands sorted by distance.
+ */
+function computeBlockBands(corridorNodes, Lkm) {
+  if (!corridorNodes || corridorNodes.length < 2 || !(Lkm > 0)) return [];
+  const kms = [...new Set(corridorNodes.map(n => n.km))].sort((a, b) => a - b);
+  const bands = [];
+  for (let i = 0; i < kms.length - 1; i++) {
+    const a = kms[i], b = kms[i + 1];
+    const dist = b - a;
+    if (dist <= 0) continue;
+    const n = Math.max(1, Math.round(dist / Lkm));
+    const step = dist / n;
+    for (let k = 0; k < n; k++) {
+      bands.push({ lo: a + k * step, hi: a + (k + 1) * step });
+    }
+  }
+  return bands;
+}
+
+/**
  * Signaling-block occupancy rectangles for one service curve.
  *
- * The corridor distance axis is partitioned into fixed blocks of length `Lkm`
- * measured from distance 0 (a shared grid for every train/direction). For each
- * block the curve passes through we emit one rectangle whose height is the
- * block's distance band and whose time-extent [t0,t1] is how long the train is
- * within that band — i.e. block_length / speed, so faster trains get narrower
- * rectangles. The curve runs corner-to-corner through each rectangle, so the
- * stack is a staircase "buffer" that hugs the service line.
+ * For each block distance-band the curve passes through we emit one rectangle
+ * whose height is the band's distance extent and whose time-extent [t0,t1] is
+ * how long the train is within that band — i.e. block_length / speed, so faster
+ * trains get narrower rectangles. The curve runs corner-to-corner through each
+ * rectangle, so the stack is a staircase "buffer" that hugs the service line.
  *
  * @param {Array<[number,number]>} points — [time(min), distance(km)] polyline.
- * @param {number} Lkm — block length in km (> 0).
+ * @param {Array<{lo:number,hi:number}>} bands — block bands (see computeBlockBands).
  */
-function computeBlockRects(points, Lkm) {
-  if (!points || points.length < 2 || !(Lkm > 0)) return [];
+function computeBlockRects(points, bands) {
+  if (!points || points.length < 2 || !bands || !bands.length) return [];
 
   let minKm = Infinity, maxKm = -Infinity;
   for (const p of points) {
     if (p[1] < minKm) minKm = p[1];
     if (p[1] > maxKm) maxKm = p[1];
   }
-  const bFirst = Math.floor(minKm / Lkm);
-  const bLast = Math.ceil(maxKm / Lkm) - 1;
 
   const rects = [];
-  for (let b = bFirst; b <= bLast; b++) {
-    const lo = b * Lkm, hi = (b + 1) * Lkm;
+  for (let bi = 0; bi < bands.length; bi++) {
+    const { lo, hi } = bands[bi];
+    if (hi <= minKm || lo >= maxKm) continue;   // band outside the trip's span
+
     // Clip each polyline segment to the band [lo,hi] and take the union of the
     // time spans. Time advances monotonically along `points`, so the min entry
     // / max exit time bound the (contiguous) occupancy of this band.
@@ -404,7 +433,7 @@ function computeBlockRects(points, Lkm) {
       if (tStart < t0) t0 = tStart;
       if (tEnd > t1) t1 = tEnd;
     }
-    if (t1 > t0) rects.push({ b, lo, hi, t0, t1 });
+    if (t1 > t0) rects.push({ b: bi, lo, hi, t0, t1 });
   }
   return rects;
 }
@@ -434,14 +463,17 @@ function renderBlocks(rx, yScale) {
   chartState.blockLayer = blockLayer;
 
   const Lkm = (STATE.blockLengthM || 0) / 1000;
+  // Bands come from the current corridor's station spacing (shared by every
+  // service on the corridor), computed once per render.
+  const bands = computeBlockBands(chartState.corridorNodes, Lkm);
   const blockData = [];
-  if (STATE.showBlocks && Lkm > 0) {
+  if (STATE.showBlocks && bands.length) {
     STATE.servicePlans.filter(p => p.visible).forEach(plan => {
       plan.services.forEach((svc, svcIdx) => {
         const points = buildServiceCurve(svc);
         if (points.length < 2) return;
         const base = serviceKey(plan.id, svcIdx);
-        computeBlockRects(points, Lkm).forEach(r => blockData.push({
+        computeBlockRects(points, bands).forEach(r => blockData.push({
           key: base + ':' + r.b,
           color: plan.color,
           t0: r.t0, t1: r.t1, lo: r.lo, hi: r.hi
