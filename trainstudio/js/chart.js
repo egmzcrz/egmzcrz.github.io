@@ -376,9 +376,10 @@ function renderServicePaths(corridorNodes, corridorPositions, rx, yScale) {
  * Block distance-bands derived from the corridor's station spacing.
  *
  * Blocks are placed per inter-station segment: for each gap between consecutive
- * stations the block count is round(gap / Lkm) (at least 1), and the gap is
- * split into that many EQUAL blocks. So a 2.3 km gap with a 1.5 km nominal
- * length → round(1.53) = 2 blocks of 1.15 km each. Block length therefore
+ * stations the block count is ceil(gap / Lkm) (at least 1), and the gap is
+ * split into that many EQUAL blocks. Rounding up guarantees each block is no
+ * longer than the nominal length. So a 2.1 km gap with a 1.0 km nominal
+ * length → ceil(2.1) = 3 blocks of 0.7 km each. Block length therefore
  * adapts per segment instead of following a rigid grid from distance 0, and
  * every block boundary lands either on a station or evenly between two.
  *
@@ -394,7 +395,7 @@ function computeBlockBands(corridorNodes, Lkm) {
     const a = kms[i], b = kms[i + 1];
     const dist = b - a;
     if (dist <= 0) continue;
-    const n = Math.max(1, Math.round(dist / Lkm));
+    const n = Math.max(1, Math.ceil(dist / Lkm));
     const step = dist / n;
     for (let k = 0; k < n; k++) {
       bands.push({ lo: a + k * step, hi: a + (k + 1) * step });
