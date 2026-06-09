@@ -146,11 +146,42 @@ function wireKeyboard() {
       }
       return;
     }
+    // Left / Right arrows = shift the selected service in time.
+    // Default step is 1 minute; holding Shift makes it 1 second (1/60 min).
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      if (STATE.selectedService) {
+        e.preventDefault();
+        const { planId, serviceIndex } = STATE.selectedService;
+        const step = e.shiftKey ? 1 / 60 : 1;
+        shiftSelectedService(planId, serviceIndex, (e.key === 'ArrowRight' ? 1 : -1) * step);
+      }
+      return;
+    }
     // F = fit chart to view
     if (e.key === 'f' || e.key === 'F') {
       e.preventDefault();
       fitToView();
     }
+  });
+}
+
+/**
+ * Shift every stop of one service by `deltaMin` minutes (whole-trip move),
+ * clamped so the earliest arrival never crosses midnight. Snapshots for undo
+ * only when an actual change happens.
+ */
+function shiftSelectedService(planId, serviceIndex, deltaMin) {
+  const plan = STATE.servicePlans.find(p => p.id === planId);
+  const svc = plan && plan.services[serviceIndex];
+  if (!svc) return;
+
+  const minArr = Math.min(...svc.times.map(t => t.arr));
+  let delta = deltaMin;
+  if (minArr + delta < 0) delta = -minArr;   // clamp at midnight
+  if (delta === 0) return;
+
+  StateManager.mutateService(planId, serviceIndex, s => {
+    s.times.forEach(t => { t.arr += delta; t.dep += delta; });
   });
 }
 
