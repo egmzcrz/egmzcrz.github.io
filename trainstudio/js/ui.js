@@ -6,6 +6,7 @@ import { StateManager } from './state-manager.js';
 import { DOM } from './dom.js';
 import { formatTimeHMS, parseTimeHHMM, showToast } from './utils.js';
 import { shiftService, setStationDwell } from './schedule.js';
+import { DEFAULT_BLOCK_LENGTH_M } from './constants.js';
 
 export function updateDetailPanel() {
   const panel = DOM.get('detail-panel');
@@ -57,6 +58,9 @@ export function updateDetailPanel() {
     )
   ));
 
+  // ---- Signaling blocks (per-service overlay) ----
+  content.appendChild(buildBlocksGroup(planId, serviceIndex, svc));
+
   // ---- Table wrapper ----
   const tableWrap = DOM.el('div', { className: 'detail-table-wrap' });
 
@@ -95,6 +99,50 @@ export function updateDetailPanel() {
 
   tableWrap.appendChild(table);
   content.appendChild(tableWrap);
+}
+
+/**
+ * Build the per-service "Signaling blocks" group shown above the timetable.
+ * A modern on/off switch toggles the overlay; a block-length input (always
+ * visible, alongside the switch) sets the block length in metres. Both write
+ * through StateManager (view state — no undo).
+ */
+function buildBlocksGroup(planId, serviceIndex, svc) {
+  // Heal services that predate the per-service block fields so the switch and
+  // length input always reflect concrete values (never blank / off-by-undefined).
+  if (svc.blockLengthM == null) svc.blockLengthM = DEFAULT_BLOCK_LENGTH_M;
+  const on = !!svc.showBlocks;
+
+  const checkbox = DOM.el('input', {
+    type: 'checkbox',
+    onChange: function(e) { StateManager.setServiceShowBlocks(planId, serviceIndex, e.target.checked); }
+  });
+  checkbox.checked = on;   // set as property to avoid a sticky `checked` attribute
+
+  const header = DOM.el('div', { className: 'blocks-header' },
+    DOM.el('span', { className: 'blocks-title' },
+      DOM.icon('fa-traffic-light'),
+      ' Signaling blocks'
+    ),
+    DOM.el('label', { className: 'switch', title: 'Show signaling blocks for this service' },
+      checkbox,
+      DOM.el('span', { className: 'switch-slider' })
+    )
+  );
+
+  const lengthRow = DOM.el('div', { className: 'blocks-length' },
+    DOM.el('span', { className: 'blocks-length-label' }, 'Block length'),
+    DOM.el('input', {
+      className: 'time-filter-input block-length-input',
+      type: 'number', min: '1', step: '50',
+      value: svc.blockLengthM,
+      'aria-label': 'Block length in metres',
+      onChange: function(e) { StateManager.setServiceBlockLength(planId, serviceIndex, e.target.value); }
+    }),
+    DOM.el('span', { className: 'blocks-length-unit' }, 'm')
+  );
+
+  return DOM.el('div', { className: 'detail-blocks' }, header, lengthRow);
 }
 
 /** Create a closure-based handler for time input changes (replaces inline onchange). */

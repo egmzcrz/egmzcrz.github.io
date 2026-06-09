@@ -1,6 +1,8 @@
 // =============================================================
 // STATE MANAGER — Encapsulated state, undo/redo, pub/sub
 // =============================================================
+import { DEFAULT_BLOCK_LENGTH_M } from './constants.js';
+
 export const StateManager = (function() {
   'use strict';
 
@@ -16,9 +18,9 @@ export const StateManager = (function() {
     maxUndo: 50,
     timeFilterStart: null,
     timeFilterEnd: null,
-    // Signaling-block overlay (view state, like the time filter — not undone).
-    blockLengthM: 500,
-    showBlocks: false
+    // Sticky default block length (metres): seeds new services and tracks the
+    // last value the user typed into any service's block-length input.
+    lastBlockLengthM: DEFAULT_BLOCK_LENGTH_M
   };
 
   const _listeners = [];
@@ -195,20 +197,36 @@ export const StateManager = (function() {
     _notify();
   }
 
-  /** Set the global signaling-block length (metres). No undo (view state). */
-  function setBlockLength(metres) {
-    const v = Math.max(1, Math.round(Number(metres) || 0));
-    if (_state.blockLengthM === v) return;
-    _state.blockLengthM = v;
+  /** Look up one trip by plan id + index (null if missing). */
+  function _findService(planId, serviceIndex) {
+    const plan = _state.servicePlans.find(p => p.id === planId);
+    return (plan && plan.services[serviceIndex]) || null;
+  }
+
+  /** Toggle the signaling-block overlay for one service. No undo (view state). */
+  function setServiceShowBlocks(planId, serviceIndex, show) {
+    const svc = _findService(planId, serviceIndex);
+    if (!svc) return;
+    show = !!show;
+    if (svc.showBlocks === show) return;
+    svc.showBlocks = show;
     _notify();
   }
 
-  /** Toggle the signaling-block overlay on/off. No undo (view state). */
-  function setShowBlocks(show) {
-    show = !!show;
-    if (_state.showBlocks === show) return;
-    _state.showBlocks = show;
-    _notify();
+  /** Set the signaling-block length (metres) for a plan. No undo (view state).
+   *  Block length is uniform within a plan, so editing one trip updates every
+   *  trip in the same plan; the value is also remembered as the sticky default
+   *  for newly-created plans. */
+  function setServiceBlockLength(planId, serviceIndex, metres) {
+    const plan = _state.servicePlans.find(p => p.id === planId);
+    if (!plan) return;
+    const v = Math.max(1, Math.round(Number(metres) || 0));
+    _state.lastBlockLengthM = v;   // remember the user's latest choice
+    let changed = false;
+    plan.services.forEach(svc => {
+      if (svc.blockLengthM !== v) { svc.blockLengthM = v; changed = true; }
+    });
+    if (changed) _notify();
   }
 
   /**
@@ -292,8 +310,8 @@ export const StateManager = (function() {
     deleteService,
     setTimeFilter,
     clearTimeFilter,
-    setBlockLength,
-    setShowBlocks,
+    setServiceShowBlocks,
+    setServiceBlockLength,
     mutateService,
     beginTimeEdit,
     endTimeEdit,

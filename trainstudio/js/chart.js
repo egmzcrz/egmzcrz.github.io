@@ -14,6 +14,7 @@ import { escapeHtml, formatTimeHMS, formatTimeHM, formatDuration } from './utils
 import { shiftService, setStationDwell } from './schedule.js';
 import { buildServiceCurve as buildCurve } from './curve.js';
 import { updateDetailPanel } from './ui.js';
+import { DEFAULT_BLOCK_LENGTH_M } from './constants.js';
 
 // ---- Helpers ----
 
@@ -467,7 +468,8 @@ const MIN_BLOCK_PX = 0.6;
 /**
  * Draw the signaling-block overlay (one translucent rectangle per block each
  * visible service occupies). Rendered into a layer beneath the service lines.
- * Controlled by STATE.showBlocks / STATE.blockLengthM.
+ * Per-service: only services with svc.showBlocks are drawn, each subdivided by
+ * its own svc.blockLengthM.
  *
  * The full block geometry is computed once here and cached on
  * chartState.blockData; the actual DOM join (with sub-pixel culling) lives in
@@ -482,25 +484,28 @@ function renderBlocks(rx, yScale) {
   }
   chartState.blockLayer = blockLayer;
 
-  const Lkm = (STATE.blockLengthM || 0) / 1000;
-  // Bands come from the current corridor's station spacing (shared by every
-  // service on the corridor), computed once per render.
-  const bands = computeBlockBands(chartState.corridorNodes, Lkm);
+  // Blocks are a per-service overlay: each service carries its own on/off flag
+  // and block length, so bands are computed per service from its block length
+  // against the current corridor's station spacing.
   const blockData = [];
-  if (STATE.showBlocks && bands.length) {
-    STATE.servicePlans.filter(p => p.visible).forEach(plan => {
-      plan.services.forEach((svc, svcIdx) => {
-        const points = buildServiceCurve(svc);
-        if (points.length < 2) return;
-        const base = serviceKey(plan.id, svcIdx);
-        computeBlockRects(points, bands).forEach(r => blockData.push({
-          key: base + ':' + r.b,
-          color: plan.color,
-          t0: r.t0, t1: r.t1, lo: r.lo, hi: r.hi
-        }));
-      });
+  STATE.servicePlans.filter(p => p.visible).forEach(plan => {
+    plan.services.forEach((svc, svcIdx) => {
+      if (!svc.showBlocks) return;
+      // Fall back to the default length for services that predate the
+      // per-service block fields (otherwise Lkm=0 yields no bands → no blocks).
+      const Lkm = (svc.blockLengthM || DEFAULT_BLOCK_LENGTH_M) / 1000;
+      const bands = computeBlockBands(chartState.corridorNodes, Lkm);
+      if (!bands.length) return;
+      const points = buildServiceCurve(svc);
+      if (points.length < 2) return;
+      const base = serviceKey(plan.id, svcIdx);
+      computeBlockRects(points, bands).forEach(r => blockData.push({
+        key: base + ':' + r.b,
+        color: plan.color,
+        t0: r.t0, t1: r.t1, lo: r.lo, hi: r.hi
+      }));
     });
-  }
+  });
   chartState.blockData = blockData;
   drawBlockRects(rx, yScale);
 }

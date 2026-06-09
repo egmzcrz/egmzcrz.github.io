@@ -291,19 +291,6 @@ function wirePopovers() {
   document.addEventListener('click', closeAllPopovers);
 }
 
-// ---- Signaling-block overlay controls ----
-function wireBlocks() {
-  const toggle = DOM.get('toggle-blocks');
-  const length = DOM.get('block-length');
-  toggle.checked = STATE.showBlocks;
-  length.value = STATE.blockLengthM;
-  toggle.addEventListener('change', () => StateManager.setShowBlocks(toggle.checked));
-  length.addEventListener('change', () => {
-    StateManager.setBlockLength(length.value);
-    length.value = STATE.blockLengthM;   // reflect the clamped value
-  });
-}
-
 // ---- Init (called once, after the DOM is ready) ----
 function init() {
   StateManager.onChange(render);
@@ -319,7 +306,6 @@ function init() {
   wireModals();
   wirePopovers();
   wireTimeFilter();
-  wireBlocks();
   initPlans();
   initWelcomeOverlay();
 

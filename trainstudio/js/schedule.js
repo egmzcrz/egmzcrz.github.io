@@ -1,3 +1,5 @@
+import { DEFAULT_BLOCK_LENGTH_M } from './constants.js';
+
 // =============================================================
 // SCHEDULE MODEL — Trip construction & edit primitives
 //
@@ -17,9 +19,10 @@
  * @param {number} dwellMin — dwell applied at every stop-station.
  * @param {string} serviceKey — key into STATE.services (stored on the trip).
  * @param {number} serviceId — display id.
+ * @param {number} [blockLengthM] — initial signaling-block length (metres).
  * @returns {{serviceId, direction, serviceKey, times: Array<{node,arr,dep,km,stop}>}}
  */
-export function buildTripFromProfile(serviceData, direction, startOffsetMin, dwellMin, serviceKey, serviceId) {
+export function buildTripFromProfile(serviceData, direction, startOffsetMin, dwellMin, serviceKey, serviceId, blockLengthM = DEFAULT_BLOCK_LENGTH_M) {
   const dir = serviceData.dir[direction];
   const order = dir.order;
   const runTime = dir.runTime;
@@ -35,7 +38,10 @@ export function buildTripFromProfile(serviceData, direction, startOffsetMin, dwe
     if (k < order.length - 1) t = dep + runTime[k];
   }
 
-  return { serviceId, direction, serviceKey, times };
+  // Signaling blocks are a per-service overlay (off by default). blockLengthM
+  // is the nominal block length used to subdivide inter-station gaps; it seeds
+  // from the caller's sticky default (the last length the user chose).
+  return { serviceId, direction, serviceKey, times, showBlocks: false, blockLengthM };
 }
 
 /**

@@ -22,6 +22,11 @@ export const PLAN_DEFAULTS = {
   direction: 'both'
 };
 
+// Default signaling-block length (metres) for a new service. Each service
+// carries its own length; this is the starting value and the fallback for
+// any service that predates the per-service block fields.
+export const DEFAULT_BLOCK_LENGTH_M = 1500;
+
 // ---- Physics ----
 // Gravitational acceleration [m/s²], shared by the engine and dynamics.
 export const G = 9.81;

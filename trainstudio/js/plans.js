@@ -143,13 +143,15 @@ export function createServicePlan(name, serviceKey, headwayMin, startOffsetMin, 
   let evenId = Math.max(0, ...allIds.filter(id => id % 2 === 0)) + 2;
   let oddId = Math.max(-1, ...allIds.filter(id => id % 2 !== 0)) + 2;
 
+  // Seed new services from the sticky default (last block length the user set).
+  const blockLen = STATE.lastBlockLengthM;
   for (let t = startOffsetMin; t <= DAY_END_MIN; t += headwayMin) {
     if (direction === 'north' || direction === 'both') {
-      plan.services.push(buildTripFromProfile(data, 'north', t, dwellMin, serviceKey, evenId));
+      plan.services.push(buildTripFromProfile(data, 'north', t, dwellMin, serviceKey, evenId, blockLen));
       evenId += 2;
     }
     if (direction === 'south' || direction === 'both') {
-      plan.services.push(buildTripFromProfile(data, 'south', t, dwellMin, serviceKey, oddId));
+      plan.services.push(buildTripFromProfile(data, 'south', t, dwellMin, serviceKey, oddId, blockLen));
       oddId += 2;
     }
   }
