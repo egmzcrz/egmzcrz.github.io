@@ -122,6 +122,7 @@ function wireKeyboard() {
       return;
     }
     if (e.key === 'Escape') {
+      closeAllPopovers();
       StateManager.deselectService();
       closeModal('modal-add-plan');
       closeModal('modal-edit-plans');
@@ -264,6 +265,32 @@ function wireTimeFilter() {
   DOM.get('time-end').addEventListener('keydown', e => { if (e.key === 'Enter') applyTimeFilter(); });
 }
 
+// ---- Popovers (topbar dropdown menus) ----
+function closeAllPopovers() {
+  document.querySelectorAll('.popover').forEach(p => { p.hidden = true; });
+  document.querySelectorAll('[data-popover]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+}
+
+function wirePopovers() {
+  document.querySelectorAll('[data-popover]').forEach(btn => {
+    const pop = DOM.get(btn.dataset.popover);
+    if (!pop) return;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const willOpen = pop.hidden;
+      closeAllPopovers();
+      if (willOpen) {
+        pop.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+      }
+    });
+    // Clicks inside the popover must not bubble to the document close handler.
+    pop.addEventListener('click', e => e.stopPropagation());
+  });
+  // Any click outside an open popover closes it.
+  document.addEventListener('click', closeAllPopovers);
+}
+
 // ---- Signaling-block overlay controls ----
 function wireBlocks() {
   const toggle = DOM.get('toggle-blocks');
@@ -290,6 +317,7 @@ function init() {
   wireResize();
   wireKeyboard();
   wireModals();
+  wirePopovers();
   wireTimeFilter();
   wireBlocks();
   initPlans();

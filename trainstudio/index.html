@@ -26,47 +26,87 @@
     ============================================================ -->
     <div id="app">
 
-      <!-- Top Bar -->
+      <!-- Top Bar — single row, organized into divider-separated groups.
+           Low-frequency display/filter controls collapse into the View popover. -->
       <div id="topbar">
         <span class="logo"><i class="fa-solid fa-train-subway"></i> Train Studio</span>
 
-        <select id="corridor-select" class="form-select" aria-label="Corridor (Y-axis)" disabled>
-          <option value="">Load data first...</option>
-        </select>
+        <span class="topbar-divider" aria-hidden="true"></span>
 
-        <button id="btn-add-plan" class="btn btn-primary">
-          <i class="fa-solid fa-plus" aria-hidden="true"></i> Add Service Plan
-        </button>
+        <!-- Plan actions -->
+        <div class="topbar-group">
+          <button id="btn-add-plan" class="btn btn-primary">
+            <i class="fa-solid fa-plus" aria-hidden="true"></i> Add Service Plan
+          </button>
+          <button id="btn-edit-plans" class="btn btn-outline" disabled>
+            <i class="fa-solid fa-sliders" aria-hidden="true"></i> Edit Plans
+          </button>
+        </div>
 
-        <button id="btn-edit-plans" class="btn btn-outline" disabled>
-          <i class="fa-solid fa-sliders" aria-hidden="true"></i> Edit Plans
-        </button>
+        <span class="topbar-divider" aria-hidden="true"></span>
 
-        <button id="btn-undo" class="btn-icon" disabled title="Undo (Ctrl+Z)" aria-label="Undo (Ctrl+Z)">
-          <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
-        </button>
-        <button id="btn-redo" class="btn-icon" disabled title="Redo (Ctrl+Shift+Z)" aria-label="Redo (Ctrl+Shift+Z)">
-          <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
-        </button>
+        <!-- History & view -->
+        <div class="topbar-group">
+          <button id="btn-undo" class="btn-icon" disabled title="Undo (Ctrl+Z)" aria-label="Undo (Ctrl+Z)">
+            <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+          </button>
+          <button id="btn-redo" class="btn-icon" disabled title="Redo (Ctrl+Shift+Z)" aria-label="Redo (Ctrl+Shift+Z)">
+            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+          </button>
+          <button id="btn-fit" class="btn-icon" disabled title="Fit to view (F)" aria-label="Fit to view (F)">
+            <i class="fa-solid fa-expand" aria-hidden="true"></i>
+          </button>
+        </div>
 
-        <button id="btn-fit" class="btn-icon" disabled title="Fit to view (F)" aria-label="Fit to view (F)">
-          <i class="fa-solid fa-expand" aria-hidden="true"></i>
-        </button>
+        <span class="topbar-divider" aria-hidden="true"></span>
 
-        <label class="block-toggle" title="Show signaling blocks on the plot">
-          <input type="checkbox" id="toggle-blocks"> Blocks
-        </label>
-        <input id="block-length" class="time-filter-input block-length-input" type="number" min="1" step="50" value="500" title="Block length (metres)" aria-label="Block length in metres">
-        <span class="time-filter-label">m</span>
+        <!-- Display & filter popover -->
+        <div class="topbar-group popover-wrap">
+          <button id="btn-view-menu" class="btn btn-outline" data-popover="view-popover"
+                  aria-haspopup="true" aria-expanded="false">
+            <i class="fa-solid fa-sliders" aria-hidden="true"></i> View
+            <i class="fa-solid fa-chevron-down chevron" aria-hidden="true"></i>
+          </button>
+
+          <div id="view-popover" class="popover" hidden>
+            <div class="popover-section">
+              <div class="popover-label">Corridor</div>
+              <select id="corridor-select" class="form-select" aria-label="Corridor (Y-axis)" disabled>
+                <option value="">Load data first...</option>
+              </select>
+            </div>
+
+            <div class="popover-divider" aria-hidden="true"></div>
+
+            <div class="popover-section">
+              <div class="popover-label">Signaling blocks</div>
+              <label class="block-toggle" title="Show signaling blocks on the plot">
+                <input type="checkbox" id="toggle-blocks"> Show blocks
+              </label>
+              <div class="popover-row">
+                <input id="block-length" class="time-filter-input block-length-input" type="number" min="1" step="50" value="500" title="Block length (metres)" aria-label="Block length in metres">
+                <span class="time-filter-label">metres</span>
+              </div>
+            </div>
+
+            <div class="popover-divider" aria-hidden="true"></div>
+
+            <div class="popover-section">
+              <div class="popover-label">Time range</div>
+              <div class="popover-row">
+                <input id="time-start" class="time-filter-input" type="text" placeholder="Start" maxlength="8" aria-label="Time filter start (HH:MM:SS)">
+                <span class="time-filter-dash" aria-hidden="true">–</span>
+                <input id="time-end" class="time-filter-input" type="text" placeholder="End" maxlength="8" aria-label="Time filter end (HH:MM:SS)">
+              </div>
+              <div class="popover-row popover-actions">
+                <button id="btn-time-apply" class="btn btn-sm btn-outline">Apply</button>
+                <button id="btn-time-reset" class="btn btn-sm btn-ghost btn-reset">Reset</button>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div class="spacer"></div>
-
-        <span class="time-filter-label" id="time-filter-label">Time:</span>
-        <input id="time-start" class="time-filter-input" type="text" placeholder="Start (HH:MM:SS)" maxlength="8" aria-label="Time filter start (HH:MM:SS)">
-        <span class="time-filter-dash" aria-hidden="true">–</span>
-        <input id="time-end" class="time-filter-input" type="text" placeholder="End (HH:MM:SS)" maxlength="8" aria-label="Time filter end (HH:MM:SS)">
-        <button id="btn-time-apply" class="btn btn-sm btn-outline">Apply</button>
-        <button id="btn-time-reset" class="btn btn-sm btn-ghost btn-reset">Reset</button>
 
         <button id="btn-download" class="btn btn-outline" disabled>
           <i class="fa-solid fa-download" aria-hidden="true"></i> Download
