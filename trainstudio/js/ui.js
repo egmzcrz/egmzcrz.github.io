@@ -8,15 +8,19 @@ import { formatTimeHMS, parseTimeHHMM, showToast } from './utils.js';
 import { shiftService, setStationDwell } from './schedule.js';
 
 export function updateDetailPanel() {
+  const panel = DOM.get('detail-panel');
   const emptyState = DOM.get('detail-empty');
   const content = DOM.get('detail-content');
 
   if (!STATE.selectedService) {
-    emptyState.style.display = 'flex';
-    content.style.display = 'none';
+    // Slide the panel off-screen. Content is left intact so it stays visible
+    // throughout the right-bound exit animation rather than blanking first.
+    panel.classList.remove('visible');
     return;
   }
 
+  // Slide the panel into view over the chart.
+  panel.classList.add('visible');
   emptyState.style.display = 'none';
   content.style.display = 'flex';
   content.innerHTML = '';
